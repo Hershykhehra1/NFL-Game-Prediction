@@ -118,6 +118,7 @@ def build_pregame_features(schedule: pd.DataFrame, game_metrics: dict) -> pd.Dat
         home_rest = 0 if pd.isna(state[home]["last_game"]) else min((game.gameday - state[home]["last_game"]).days, 21) - 7
         away_rest = 0 if pd.isna(state[away]["last_game"]) else min((game.gameday - state[away]["last_game"]).days, 21) - 7
         h_games, a_games = state[home]["games"], state[away]["games"]
+        h_wins, a_wins = state[home]["wins"], state[away]["wins"]
         h_margin = np.mean(state[home]["recent_margins"]) if state[home]["recent_margins"] else 0.0
         a_margin = np.mean(state[away]["recent_margins"]) if state[away]["recent_margins"] else 0.0
 
@@ -125,6 +126,8 @@ def build_pregame_features(schedule: pd.DataFrame, game_metrics: dict) -> pd.Dat
             "game_id": game.game_id, "season": game.season, "week": game.week, "gameday": game.gameday,
             "matchup": f"{away} @ {home}", "home_team": home, "away_team": away,
             "home_score": game.home_score, "away_score": game.away_score,
+            "home_wins": int(h_wins), "home_losses": int(h_games - h_wins),
+            "away_wins": int(a_wins), "away_losses": int(a_games - a_wins),
             "elo_diff": elo_diff,
             "win_pct_diff": (state[home]["wins"] / h_games if h_games else 0) - (state[away]["wins"] / a_games if a_games else 0),
             "point_diff_diff": ((state[home]["pf"] - state[home]["pa"]) / h_games if h_games else 0) - ((state[away]["pf"] - state[away]["pa"]) / a_games if a_games else 0),
