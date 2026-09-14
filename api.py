@@ -247,6 +247,17 @@ def startup_event():
     thread.start()
 
 
+@app.post("/api/refresh")
+@app.get("/api/refresh")
+def refresh_pipeline():
+    """Trigger an on-demand re-fetch from nflreadpy for live completed game scores."""
+    if CACHE["is_loading"]:
+        return {"status": "in_progress", "message": "Pipeline is currently updating."}
+    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026))
+    thread.start()
+    return {"status": "started", "message": "Re-fetching latest live NFL game data and updating models."}
+
+
 @app.get("/api/status")
 def get_status():
     """Return backend initialization status."""
