@@ -1,0 +1,34 @@
+NFL-Game-Prediction/
+├── backend/                        # 🧠 Python Backend (FastAPI + ML + AI)
+│   ├── app/
+│   │   ├── api/                    # REST API Endpoints
+│   │   │   ├── routes_matchups.py  # Weekly game predictions
+│   │   │   ├── routes_sandbox.py   # Custom scenario simulations
+│   │   │   ├── routes_ai.py        # 🤖 AI Scouting & Narrative generator
+│   │   │   └── routes_injuries.py  # Injury reports & impact scores
+│   │   │
+│   │   ├── pipeline/               # Data & ML Pipeline
+│   │   │   ├── data_loader.py      # nflreadpy PBP, player stats, injuries
+│   │   │   ├── feature_engine.py   # Elo, rolling stats, differentials
+│   │   │   └── model_trainer.py    # XGBoost, HistGradient, Calibration
+│   │   │
+│   │   ├── ai/                     # 🤖 AI / LLM Integration Layer
+│   │   │   ├── scouting_agent.py   # Generates human-like game previews
+│   │   │   ├── upset_explainer.py  # Analyzes model surprises & upsets
+│   │   │   └── prompt_templates.py # Structured prompt engineering
+│   │   │
+│   │   └── main.py                 # FastAPI App Entrypoint
+│   │
+│   ├── saved_models/               # Serialized .joblib trained models
+│   └── requirements.txt
+│
+└── frontend/                       # ⚡ React UI (Vite + Modern Aesthetics)
+    ├── src/
+    │   ├── components/
+    │   │   ├── matchups/           # 2x8 Matchup Grid, MatchupCards
+    │   │   ├── ai/                 # 🤖 AI Matchup Analysis & Chat Drawer
+    │   │   ├── sandbox/            # Scenario Simulator & Metric Info
+    │   │   └── analytics/          # Leaderboard & Model Metrics
+    │   ├── services/api.js         # Centralized API fetch layer
+    │   └── App.jsx
+    └── package.json
