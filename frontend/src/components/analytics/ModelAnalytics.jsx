@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Award, PieChart, Layers, TrendingUp } from 'lucide-react';
+import { getModelPerformance } from '../../services/api';
 
 /* ── Stat Tile ─────────────────────────────────────────────────────── */
 const StatTile = ({ label, value, color = 'var(--green)' }) => (
@@ -49,16 +50,15 @@ const WeightBar = ({ label, pct, color }) => (
 );
 
 /* ── Main Component ─────────────────────────────────────────────────── */
-export const ModelAnalytics = ({ apiUrl }) => {
+export const ModelAnalytics = () => {
   const [data, setData]         = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/model-performance`)
-      .then((r) => r.json())
+    getModelPerformance()
       .then((d) => { setData(d); setIsLoading(false); })
       .catch(() => setIsLoading(false));
-  }, [apiUrl]);
+  }, []);
 
   if (isLoading) return (
     <div className="content-area">

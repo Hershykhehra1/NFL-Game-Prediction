@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { TeamBadge } from '../utils/teamLogos';
+import { TeamBadge } from '../../utils/teamLogos';
+import { getTeams, predictCustom } from '../../services/api';
 import { 
   Sliders, RefreshCw, Sparkles, ArrowRight, Info, HelpCircle, 
   BookOpen, ChevronDown, ChevronUp, X, Zap, Shield, Award, Activity, RotateCcw
@@ -254,7 +255,7 @@ const SectionTitle = ({ children, extra }) => (
 );
 
 /* ── Main Component ─────────────────────────────────────────────────── */
-export const MatchupSandbox = ({ apiUrl }) => {
+export const MatchupSandbox = () => {
   const [teams, setTeams]           = useState([]);
   const [homeTeam, setHomeTeam]     = useState('KC');
   const [awayTeam, setAwayTeam]     = useState('BUF');
@@ -270,31 +271,25 @@ export const MatchupSandbox = ({ apiUrl }) => {
   const [showFullGuide, setShowFullGuide] = useState(false);
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/teams`)
-      .then((r) => r.json())
+    getTeams()
       .then((d) => { if (d.teams) setTeams(d.teams); })
       .catch(console.error);
-  }, [apiUrl]);
+  }, []);
 
   const handleSimulate = () => {
-    fetch(`${apiUrl}/api/predict-custom`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        home_team: homeTeam,
-        away_team: awayTeam,
-        elo_diff: eloDiff,
-        win_pct_diff: 0.1,
-        point_diff_diff: recentMarginDiff,
-        recent_margin_diff: recentMarginDiff,
-        net_epa_diff: netEpaDiff,
-        net_success_diff: netSuccessDiff / 100,
-        turnover_rate_diff: turnoverRateDiff / 100,
-        rest_diff: restDiff,
-        neutral_site: isNeutral,
-      }),
+    predictCustom({
+      home_team: homeTeam,
+      away_team: awayTeam,
+      elo_diff: eloDiff,
+      win_pct_diff: 0.1,
+      point_diff_diff: recentMarginDiff,
+      recent_margin_diff: recentMarginDiff,
+      net_epa_diff: netEpaDiff,
+      net_success_diff: netSuccessDiff / 100,
+      turnover_rate_diff: turnoverRateDiff / 100,
+      rest_diff: restDiff,
+      neutral_site: isNeutral,
     })
-      .then((r) => r.json())
       .then(setResult)
       .catch(console.error);
   };

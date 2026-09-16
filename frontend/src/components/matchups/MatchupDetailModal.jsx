@@ -1,5 +1,5 @@
 import React from 'react';
-import { TeamBadge, TEAM_INFO } from '../utils/teamLogos';
+import { TeamBadge, TEAM_INFO } from '../../utils/teamLogos';
 import { X, TrendingUp, Zap, Scale, Clock, AlertTriangle, ShieldCheck, Sparkles } from 'lucide-react';
 
 /* ── Feature Row ────────────────────────────────────────────────────── */

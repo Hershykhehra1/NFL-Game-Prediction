@@ -1,5 +1,5 @@
 import React from 'react';
-import { TeamBadge, TEAM_INFO } from '../utils/teamLogos';
+import { TeamBadge, TEAM_INFO } from '../../utils/teamLogos';
 import { Sparkles, ArrowUpRight, CheckCircle2, XCircle } from 'lucide-react';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */

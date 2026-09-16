@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { TeamBadge } from '../utils/teamLogos';
+import { TeamBadge } from '../../utils/teamLogos';
 import { Trophy, Search, Users } from 'lucide-react';
+import { getTeams } from '../../services/api';
 
-export const TeamLeaderboard = ({ apiUrl }) => {
+export const TeamLeaderboard = () => {
   const [teams, setTeams]           = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading]   = useState(true);
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/teams`)
-      .then((r) => r.json())
+    getTeams()
       .then((d) => { if (d.teams) setTeams(d.teams); setIsLoading(false); })
       .catch(() => setIsLoading(false));
-  }, [apiUrl]);
+  }, []);
 
   const filteredTeams = teams.filter((t) =>
     t.abbr.toLowerCase().includes(searchQuery.toLowerCase()) ||
