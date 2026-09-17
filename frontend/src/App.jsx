@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Header } from './components/Header';
-import { MatchupGrid } from './components/MatchupGrid';
-import { ModelAnalytics } from './components/ModelAnalytics';
-import { MatchupSandbox } from './components/MatchupSandbox';
-import { TeamLeaderboard } from './components/TeamLeaderboard';
+import { Header } from './components/layout/Header';
+import { MatchupGrid } from './components/matchups/MatchupGrid';
+import { ModelAnalytics } from './components/analytics/ModelAnalytics';
+import { MatchupSandbox } from './components/sandbox/MatchupSandbox';
+import { TeamLeaderboard } from './components/analytics/TeamLeaderboard';
 import { AlertCircle, RefreshCw, Cpu } from 'lucide-react';
-
-const API_URL = 'http://localhost:8000';
+import { getStatus, getWeeks, getPredictions, triggerRefresh } from './services/api';
 
 export function App() {
   const [season, setSeason]           = useState(2026);
@@ -22,8 +21,7 @@ export function App() {
 
   /* ── Backend Status Poll ──────────────────────── */
   const checkStatus = () => {
-    fetch(`${API_URL}/api/status`)
-      .then((r) => r.json())
+    getStatus()
       .then((status) => {
         if (status.is_loaded) {
           setIsInitializing(false);
@@ -41,8 +39,7 @@ export function App() {
   };
 
   const fetchWeeks = (s) => {
-    fetch(`${API_URL}/api/weeks?season=${s}`)
-      .then((r) => r.json())
+    getWeeks(s)
       .then((data) => {
         if (data.weeks?.length > 0) setWeeksList(data.weeks);
         if (data.available_seasons)  setAvailableSeasons(data.available_seasons);
@@ -52,8 +49,7 @@ export function App() {
 
   const fetchPredictions = (s, w) => {
     setIsLoading(true);
-    fetch(`${API_URL}/api/predictions?season=${s}&week=${w}`)
-      .then((r) => r.json())
+    getPredictions(s, w)
       .then((data) => { setGames(data.games || []); setIsLoading(false); })
       .catch(() => setIsLoading(false));
   };
@@ -69,10 +65,9 @@ export function App() {
 
   const handleRefresh = () => {
     setIsLoading(true);
-    fetch(`${API_URL}/api/refresh`, { method: 'POST' })
+    triggerRefresh()
       .catch(() => {})
       .finally(() => {
-        // Allow brief moment for pipeline to refresh or fetch current state
         setTimeout(() => fetchPredictions(season, week), 600);
       });
   };
@@ -156,9 +151,9 @@ export function App() {
       ) : (
         <main>
           {activeTab === 'matchups'  && <MatchupGrid games={games} isLoading={isLoading} />}
-          {activeTab === 'analytics' && <ModelAnalytics apiUrl={API_URL} />}
-          {activeTab === 'sandbox'   && <MatchupSandbox apiUrl={API_URL} />}
-          {activeTab === 'teams'     && <TeamLeaderboard apiUrl={API_URL} />}
+          {activeTab === 'analytics' && <ModelAnalytics />}
+          {activeTab === 'sandbox'   && <MatchupSandbox />}
+          {activeTab === 'teams'     && <TeamLeaderboard />}
         </main>
       )}
 
