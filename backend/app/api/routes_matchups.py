@@ -14,16 +14,18 @@ router = APIRouter()
 
 
 def load_model_pipeline(start_season=2021, predict_season=2026):
-    """Load schedules, PBP data, compute features and fit models."""
+    """Load schedules, PBP, player stats, injuries, and depth charts, compute features and fit models."""
     try:
         CACHE.is_loading = True
         CACHE.error = None
         print(f"Loading NFL data from {start_season} to {predict_season}...")
-        schedule, pbp = predictor.load_inputs(start_season, predict_season)
+        schedule, pbp, player_stats, injuries, depth_charts = predictor.load_inputs(start_season, predict_season)
+        
         print("Computing play-by-play game metrics...")
         game_metrics = predictor.make_game_metrics(pbp)
-        print("Building pregame features & Elo tracking...")
-        model_data = predictor.build_pregame_features(schedule, game_metrics)
+        
+        print("Building pregame features, starting QB metrics & position-weighted injuries...")
+        model_data = predictor.build_pregame_features(schedule, game_metrics, player_stats, injuries, depth_charts)
         
         model_data["home_win"] = (
             (model_data["home_score"] > model_data["away_score"]).astype(float)
@@ -41,8 +43,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         CACHE.completed = completed
         CACHE.models = models
         CACHE.weights = weights
-        CACHE.scores = scores
-        CACHE.schedule = schedule
+        CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
         CACHE.is_fallback = False
@@ -57,6 +58,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         CACHE.models = models
         CACHE.weights = weights
         CACHE.scores = scores
+        CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
         CACHE.is_fallback = True
@@ -70,6 +72,7 @@ def get_status():
         "is_loading": CACHE.is_loading,
         "is_fallback": CACHE.is_fallback,
         "error": CACHE.error,
+        "last_updated": CACHE.last_updated,
         "features": predictor.FEATURES,
         "weights": CACHE.weights if CACHE.weights else {}
     }
@@ -78,7 +81,7 @@ def get_status():
 @router.post("/refresh")
 @router.get("/refresh")
 def refresh_pipeline():
-    """Trigger an on-demand re-fetch from nflreadpy for live completed game scores."""
+    """Trigger an on-demand re-fetch from nflreadpy for live completed game scores and injury updates."""
     if CACHE.is_loading:
         return {"status": "in_progress", "message": "Pipeline is currently updating."}
     thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026))
@@ -106,7 +109,7 @@ def get_weeks(season: int = 2026):
 
 @router.get("/predictions")
 def get_predictions(season: int = 2026, week: int = 1):
-    """Return matchup predictions and feature differentials for a specific season and week."""
+    """Return matchup predictions, starting QB comparisons, and injury differentials."""
     if not CACHE.is_loaded:
         raise HTTPException(status_code=503, detail="Model pipeline loading in background. Please retry in a moment.")
     
@@ -122,17 +125,23 @@ def get_predictions(season: int = 2026, week: int = 1):
     
     output_games = []
     for row in week_games.itertuples(index=False):
+        row_dict = row._asdict()
+        input_df = pd.DataFrame([row_dict])[features].fillna(0.0)
+
         if CACHE.is_fallback:
-            h_prob = 1.0 / (1.0 + math.exp(-(row.elo_diff / 180.0 + row.net_epa_diff * 3.5)))
-            h_prob = min(max(h_prob, 0.12), 0.92)
+            elo_d = getattr(row, "elo_diff", 0.0)
+            epa_d = getattr(row, "net_epa_diff", 0.0)
+            qb_epa_d = getattr(row, "qb_epa_diff", 0.0)
+            h_prob = 1.0 / (1.0 + math.exp(-(elo_d / 180.0 + epa_d * 3.5 + qb_epa_d * 2.0)))
+            h_prob = min(max(h_prob, 0.10), 0.92)
             a_prob = 1.0 - h_prob
             prob_logistic = h_prob
             prob_boosted = h_prob
         else:
-            h_prob = float(sum(weights[name] * model.predict_proba(pd.DataFrame([row._asdict()])[features])[:, 1] for name, model in models.items())[0])
+            h_prob = float(sum(weights[name] * model.predict_proba(input_df)[:, 1] for name, model in models.items())[0])
             a_prob = 1.0 - h_prob
-            prob_logistic = float(models["logistic"].predict_proba(pd.DataFrame([row._asdict()])[features])[:, 1][0])
-            prob_boosted = float(models["boosted"].predict_proba(pd.DataFrame([row._asdict()])[features])[:, 1][0])
+            prob_logistic = float(models["logistic"].predict_proba(input_df)[:, 1][0])
+            prob_boosted = float(models["boosted"].predict_proba(input_df)[:, 1][0])
 
         pred_winner = row.home_team if h_prob >= 0.5 else row.away_team
         conf = round(float(max(h_prob, a_prob) * 100), 1)
@@ -144,8 +153,8 @@ def get_predictions(season: int = 2026, week: int = 1):
         else:
             conf_tier = "Toss-Up"
 
-        home_meta = TEAM_METADATA.get(row.home_team, {"name": row.home_team, "city": row.home_team, "primary": "#1f2937", "secondary": "#4b5563"})
-        away_meta = TEAM_METADATA.get(row.away_team, {"name": row.away_team, "city": row.away_team, "primary": "#1f2937", "secondary": "#4b5563"})
+        home_meta = TEAM_METADATA.get(row.home_team, {"name": row.home_team, "city": row.home_team, "primary": "#1f2937", "secondary": "#4b5563", "qb": "Starting QB"})
+        away_meta = TEAM_METADATA.get(row.away_team, {"name": row.away_team, "city": row.away_team, "primary": "#1f2937", "secondary": "#4b5563", "qb": "Starting QB"})
         is_completed = not (pd.isna(row.home_score) or pd.isna(row.away_score))
         actual_winner = None
         if is_completed:
@@ -198,19 +207,40 @@ def get_predictions(season: int = 2026, week: int = 1):
             "actual_winner": actual_winner,
             "is_correct": (pred_winner == actual_winner) if is_completed and actual_winner != "TIE" else None,
             "differentials": {
-                "elo_diff": round(float(row.elo_diff), 1),
-                "win_pct_diff": round(float(row.win_pct_diff * 100), 1),
-                "point_diff_diff": round(float(row.point_diff_diff), 1),
-                "recent_margin_diff": round(float(row.recent_margin_diff), 1),
-                "net_epa_diff": round(float(row.net_epa_diff), 3),
-                "net_success_diff": round(float(row.net_success_diff * 100), 1),
-                "turnover_rate_diff": round(float(row.turnover_rate_diff * 100), 2),
-                "rest_diff": int(row.rest_diff),
-                "neutral_site": bool(row.neutral_site)
+                "elo_diff": round(float(getattr(row, "elo_diff", 0.0)), 1),
+                "win_pct_diff": round(float(getattr(row, "win_pct_diff", 0.0) * 100), 1),
+                "point_diff_diff": round(float(getattr(row, "point_diff_diff", 0.0)), 1),
+                "recent_margin_diff": round(float(getattr(row, "recent_margin_diff", 0.0)), 1),
+                "net_epa_diff": round(float(getattr(row, "net_epa_diff", 0.0)), 3),
+                "net_success_diff": round(float(getattr(row, "net_success_diff", 0.0) * 100), 1),
+                "turnover_rate_diff": round(float(getattr(row, "turnover_rate_diff", 0.0) * 100), 2),
+                "rest_diff": int(getattr(row, "rest_diff", 0)),
+                "neutral_site": bool(getattr(row, "neutral_site", False)),
+                "qb_epa_diff": round(float(getattr(row, "qb_epa_diff", 0.0)), 3),
+                "qb_cpoe_diff": round(float(getattr(row, "qb_cpoe_diff", 0.0)), 1),
+                "injury_diff": round(float(getattr(row, "injury_diff", 0.0)), 1),
+                "off_injury_diff": round(float(getattr(row, "off_injury_diff", 0.0)), 1),
+                "def_injury_diff": round(float(getattr(row, "def_injury_diff", 0.0)), 1),
+            },
+            "starting_qbs": {
+                "home_qb": getattr(row, "home_qb", home_meta.get("qb", "Starting QB")),
+                "away_qb": getattr(row, "away_qb", away_meta.get("qb", "Starting QB")),
+                "home_epa": round(float(getattr(row, "home_qb_epa", 0.0)), 3),
+                "away_epa": round(float(getattr(row, "away_qb_epa", 0.0)), 3),
+                "home_cpoe": round(float(getattr(row, "home_qb_cpoe", 0.0)), 1),
+                "away_cpoe": round(float(getattr(row, "away_qb_cpoe", 0.0)), 1),
+            },
+            "injury_breakdown": {
+                "home_index": round(float(getattr(row, "home_injury_index", 0.0)), 1),
+                "away_index": round(float(getattr(row, "away_injury_index", 0.0)), 1),
+                "home_injuries": getattr(row, "home_injuries", []),
+                "away_injuries": getattr(row, "away_injuries", []),
             },
             "model_breakdown": {
                 "logistic_home_win_prob": round(prob_logistic * 100, 1),
-                "boosted_home_win_prob": round(prob_boosted * 100, 1)
+                "boosted_home_win_prob": round(prob_boosted * 100, 1),
+                "logistic_weight": round(weights.get("logistic", 0.48) * 100 if weights.get("logistic", 0.48) <= 1.0 else weights.get("logistic", 48.0), 1),
+                "boosted_weight": round(weights.get("boosted", 0.52) * 100 if weights.get("boosted", 0.52) <= 1.0 else weights.get("boosted", 52.0), 1),
             }
         }
         output_games.append(game_dict)
@@ -219,6 +249,7 @@ def get_predictions(season: int = 2026, week: int = 1):
         "season": season,
         "week": week,
         "total_games": len(output_games),
+        "last_updated": CACHE.last_updated,
         "games": output_games
     }
 
@@ -228,11 +259,14 @@ def get_teams():
     """Return list of all 32 NFL teams."""
     teams_list = []
     for abbr, data in TEAM_METADATA.items():
+        if abbr == "LA":  # avoid dup with LAR or vice versa
+            continue
         teams_list.append({
             "abbr": abbr,
             "name": data["name"],
             "city": data["city"],
             "primary": data["primary"],
-            "secondary": data["secondary"]
+            "secondary": data["secondary"],
+            "qb": data.get("qb", "Starting QB"),
         })
     return {"teams": sorted(teams_list, key=lambda x: x["name"])}

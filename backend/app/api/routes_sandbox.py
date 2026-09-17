@@ -24,6 +24,11 @@ class CustomPredictionRequest(BaseModel):
     turnover_rate_diff: float = 0.0
     rest_diff: int = 0
     neutral_site: bool = False
+    qb_epa_diff: float = 0.0
+    qb_cpoe_diff: float = 0.0
+    injury_diff: float = 0.0
+    off_injury_diff: float = 0.0
+    def_injury_diff: float = 0.0
 
 
 @router.post("/predict-custom")
@@ -42,15 +47,20 @@ def predict_custom(req: CustomPredictionRequest):
         "net_success_diff": req.net_success_diff,
         "turnover_rate_diff": req.turnover_rate_diff,
         "rest_diff": req.rest_diff,
-        "neutral_site": int(req.neutral_site)
+        "neutral_site": int(req.neutral_site),
+        "qb_epa_diff": req.qb_epa_diff,
+        "qb_cpoe_diff": req.qb_cpoe_diff,
+        "injury_diff": req.injury_diff,
+        "off_injury_diff": req.off_injury_diff,
+        "def_injury_diff": req.def_injury_diff,
     }
-    input_df = pd.DataFrame([row_dict])[features]
+    input_df = pd.DataFrame([row_dict])[features].fillna(0.0)
 
     models = CACHE.models
     weights = CACHE.weights
 
     if CACHE.is_fallback:
-        h_prob = 1.0 / (1.0 + math.exp(-(req.elo_diff / 180.0 + req.net_epa_diff * 3.5)))
+        h_prob = 1.0 / (1.0 + math.exp(-(req.elo_diff / 180.0 + req.net_epa_diff * 3.5 + req.qb_epa_diff * 2.0 + req.injury_diff * 0.15)))
         h_prob = min(max(h_prob, 0.05), 0.95)
         log_prob = h_prob
         boost_prob = h_prob

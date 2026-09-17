@@ -16,5 +16,6 @@ class StateCache:
         self.scores: Any = None
         self.schedule: Any = None
         self.latest_season: int = 2026
+        self.last_updated: Optional[str] = None
 
 CACHE = StateCache()
