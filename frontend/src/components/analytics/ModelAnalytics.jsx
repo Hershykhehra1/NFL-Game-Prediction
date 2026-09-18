@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Award, PieChart, Layers, TrendingUp } from 'lucide-react';
+import { Award, PieChart, Layers, TrendingUp, GitBranch, Crosshair, HeartPulse, Zap } from 'lucide-react';
 import { getModelPerformance } from '../../services/api';
 
 /* ── Stat Tile ─────────────────────────────────────────────────────── */
@@ -72,7 +72,7 @@ export const ModelAnalytics = () => {
 
   if (!data) return null;
 
-  const { weights, summary, by_season } = data;
+  const { weights, summary, by_season, features } = data;
 
   return (
     <div className="content-area" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -87,10 +87,10 @@ export const ModelAnalytics = () => {
             </span>
           </div>
           <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-1)', marginBottom: 10, lineHeight: 1.2 }}>
-            Leakage-Free Model Performance
+            Leakage-Free Multi-Branch Model
           </h2>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.75, maxWidth: 520 }}>
-            Models are trained and evaluated using strictly out-of-sample time series splits across historical seasons. Ensemble weights are derived from inverse Brier scores to prioritize calibrated probabilities.
+          <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.75, maxWidth: 540 }}>
+            Predictions are driven by a calibrated ensemble ingesting <strong>Play-by-Play drive efficiency</strong>, <strong>Starting QB rolling metrics</strong>, and <strong>Position-Weighted roster injuries</strong> across historical seasons with strict time-series splits.
           </p>
         </div>
 
@@ -109,6 +109,60 @@ export const ModelAnalytics = () => {
           </div>
           <WeightBar label="HistGradientBoosting" pct={weights?.boosted ?? 50} color="var(--green)" />
           <WeightBar label="Logistic Regression" pct={weights?.logistic ?? 50} color="var(--teal-bright)" />
+        </div>
+      </div>
+
+      {/* ── 3-Branch Architecture Overview ─────────────── */}
+      <div className="glass-panel" style={{ padding: '24px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <GitBranch size={16} color="var(--teal-bright)" />
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-2)' }}>
+            3-Branch Feature Engineering Architecture
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+          {/* Branch 1 */}
+          <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(20,184,166,0.15)', borderRadius: 14, padding: '16px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Zap size={15} color="var(--teal-bright)" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>1. Play-by-Play Data</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5, marginBottom: 10 }}>
+              Ingests down-by-down context from <code style={{ color: 'var(--teal-bright)' }}>load_pbp</code>. Calculates Net EPA/play, down success rate, and turnover avoidance.
+            </p>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>
+              Features: <span style={{ color: 'var(--teal-bright)' }}>net_epa_diff, net_success_diff, turnover_rate_diff</span>
+            </div>
+          </div>
+
+          {/* Branch 2 */}
+          <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 14, padding: '16px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Crosshair size={15} color="#f59e0b" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>2. Starting QB Stats</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5, marginBottom: 10 }}>
+              Tracks individual passer form from <code style={{ color: '#f59e0b' }}>load_player_stats</code>. Computes rolling pregame EPA/play and Completion % Over Expected (CPOE).
+            </p>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>
+              Features: <span style={{ color: '#f59e0b' }}>qb_epa_diff, qb_cpoe_diff</span>
+            </div>
+          </div>
+
+          {/* Branch 3 */}
+          <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 14, padding: '16px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <HeartPulse size={15} color="#f87171" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>3. Position-Weighted Injuries</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5, marginBottom: 10 }}>
+              Cross-references <code style={{ color: '#f87171' }}>load_injuries</code> with depth chart starter ranks for QB, O-line, Pass Catchers, and Front/Secondary defense.
+            </p>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 600 }}>
+              Features: <span style={{ color: '#f87171' }}>injury_diff, off_injury_diff, def_injury_diff</span>
+            </div>
+          </div>
         </div>
       </div>
 
