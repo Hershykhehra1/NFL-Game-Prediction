@@ -1,6 +1,9 @@
 import React from 'react';
 import { TeamBadge, TEAM_INFO } from '../../utils/teamLogos';
-import { X, TrendingUp, Zap, Scale, Clock, AlertTriangle, ShieldCheck, Sparkles } from 'lucide-react';
+import { 
+  X, TrendingUp, Zap, Scale, Clock, AlertTriangle, ShieldCheck, Sparkles,
+  UserCheck, Activity, ShieldAlert, HeartPulse, Crosshair
+} from 'lucide-react';
 
 /* ── Feature Row ────────────────────────────────────────────────────── */
 const FeatureRow = ({ Icon, label, desc, value, favors }) => (
@@ -39,15 +42,31 @@ const FeatureRow = ({ Icon, label, desc, value, favors }) => (
 export const MatchupDetailModal = ({ game, onClose }) => {
   if (!game) return null;
 
-  const { home_team, away_team, predicted_winner, confidence, differentials, model_breakdown, gameday } = game;
+  const { 
+    home_team, away_team, predicted_winner, confidence, differentials, 
+    starting_qbs, injury_breakdown, model_breakdown, gameday 
+  } = game;
 
   const awayFullName = away_team.name || TEAM_INFO[away_team.abbr]?.name || away_team.abbr;
   const homeFullName = home_team.name || TEAM_INFO[home_team.abbr]?.name || home_team.abbr;
   const awayRecord = away_team.record || (away_team.wins !== undefined && away_team.losses !== undefined ? `${away_team.wins}-${away_team.losses}` : '0-0');
   const homeRecord = home_team.record || (home_team.wins !== undefined && home_team.losses !== undefined ? `${home_team.wins}-${home_team.losses}` : '0-0');
 
+  const sq = starting_qbs || {
+    home_qb: 'Starting QB', away_qb: 'Starting QB',
+    home_epa: 0.0, away_epa: 0.0, home_cpoe: 0.0, away_cpoe: 0.0
+  };
+
+  const inj = injury_breakdown || {
+    home_index: 0.0, away_index: 0.0,
+    home_injuries: [], away_injuries: []
+  };
+
   const diffItems = [
     { label: 'Elo Rating Diff',       value: differentials.elo_diff > 0 ? `+${differentials.elo_diff}` : differentials.elo_diff,                                                      favors: differentials.elo_diff > 0 ? home_team.abbr : away_team.abbr,           icon: TrendingUp,    desc: 'Includes 55 Elo home field advantage'       },
+    { label: 'Starting QB EPA / Play',value: differentials.qb_epa_diff !== undefined ? (differentials.qb_epa_diff > 0 ? `+${differentials.qb_epa_diff}` : differentials.qb_epa_diff) : '+0.00', favors: (differentials.qb_epa_diff || 0) > 0 ? home_team.abbr : away_team.abbr, icon: Crosshair,  desc: 'Rolling QB passing & rushing EPA differential' },
+    { label: 'Starting QB CPOE (%)',  value: differentials.qb_cpoe_diff !== undefined ? `${differentials.qb_cpoe_diff > 0 ? '+' : ''}${differentials.qb_cpoe_diff}%` : '+0.0%',      favors: (differentials.qb_cpoe_diff || 0) > 0 ? home_team.abbr : away_team.abbr, icon: UserCheck,  desc: 'Completion % Over Expected accuracy form' },
+    { label: 'Roster Health Advantage',value: differentials.injury_diff !== undefined ? `${differentials.injury_diff > 0 ? '+' : ''}${differentials.injury_diff} pts` : '0.0 pts', favors: (differentials.injury_diff || 0) > 0 ? home_team.abbr : away_team.abbr, icon: HeartPulse, desc: 'Position-weighted injury impact differential' },
     { label: 'Net EPA / Play Diff',   value: differentials.net_epa_diff > 0 ? `+${differentials.net_epa_diff}` : differentials.net_epa_diff,                                          favors: differentials.net_epa_diff > 0 ? home_team.abbr : away_team.abbr,       icon: Zap,           desc: 'Offensive vs defensive down efficiency'     },
     { label: 'Success Rate Diff',     value: `${differentials.net_success_diff > 0 ? '+' : ''}${differentials.net_success_diff}%`,                                                    favors: differentials.net_success_diff > 0 ? home_team.abbr : away_team.abbr,   icon: Scale,         desc: 'Percentage of positive EPA plays'           },
     { label: 'Recent 5-Game Margin',  value: differentials.recent_margin_diff > 0 ? `+${differentials.recent_margin_diff} pts` : `${differentials.recent_margin_diff} pts`,          favors: differentials.recent_margin_diff > 0 ? home_team.abbr : away_team.abbr, icon: TrendingUp,    desc: 'Weighted point differential form'           },
@@ -65,10 +84,10 @@ export const MatchupDetailModal = ({ game, onClose }) => {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: 660,
-          maxHeight: '88vh',
+          maxWidth: 680,
+          maxHeight: '90vh',
           overflowY: 'auto',
-          background: 'rgba(9,17,24,0.97)',
+          background: 'rgba(9,17,24,0.98)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
           border: '1px solid var(--border)',
@@ -103,7 +122,7 @@ export const MatchupDetailModal = ({ game, onClose }) => {
         {/* Modal Title */}
         <div style={{ textAlign: 'center', paddingRight: 24 }}>
           <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--teal-bright)', marginBottom: 4 }}>
-            Pregame Deep Dive
+            Pregame Deep Dive & Player Analytics
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>{gameday}</div>
         </div>
@@ -174,14 +193,162 @@ export const MatchupDetailModal = ({ game, onClose }) => {
           </div>
         </div>
 
+        {/* ── Starting Quarterback Comparison ── */}
+        <div style={{
+          background: 'rgba(0,0,0,0.45)',
+          border: '1px solid rgba(20,184,166,0.2)',
+          borderRadius: 16,
+          padding: '16px 18px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Crosshair size={14} color="var(--teal-bright)" />
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-2)' }}>
+                Starting Quarterback Matchup
+              </span>
+            </div>
+            <span style={{ fontSize: 10, color: 'var(--teal-bright)', fontWeight: 700 }}>
+              {differentials.qb_epa_diff > 0 ? `+${differentials.qb_epa_diff} EPA Favors ${home_team.abbr}` : (differentials.qb_epa_diff < 0 ? `+${Math.abs(differentials.qb_epa_diff)} EPA Favors ${away_team.abbr}` : 'Even QB EPA')}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* Away QB */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 12,
+              padding: '12px 14px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--teal-bright)' }}>{away_team.abbr} QB</span>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-1)', marginBottom: 8 }}>
+                {sq.away_qb}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-3)' }}>
+                <span>Rolling EPA/play: <strong style={{ color: 'var(--text-1)' }}>{sq.away_epa > 0 ? `+${sq.away_epa}` : sq.away_epa}</strong></span>
+                <span>CPOE: <strong style={{ color: 'var(--text-1)' }}>{sq.away_cpoe > 0 ? `+${sq.away_cpoe}%` : `${sq.away_cpoe}%`}</strong></span>
+              </div>
+            </div>
+
+            {/* Home QB */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 12,
+              padding: '12px 14px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--green)' }}>{home_team.abbr} QB</span>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-1)', marginBottom: 8 }}>
+                {sq.home_qb}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-3)' }}>
+                <span>Rolling EPA/play: <strong style={{ color: 'var(--text-1)' }}>{sq.home_epa > 0 ? `+${sq.home_epa}` : sq.home_epa}</strong></span>
+                <span>CPOE: <strong style={{ color: 'var(--text-1)' }}>{sq.home_cpoe > 0 ? `+${sq.home_cpoe}%` : `${sq.home_cpoe}%`}</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Position-Weighted Roster Injuries ── */}
+        <div style={{
+          background: 'rgba(0,0,0,0.45)',
+          border: '1px solid rgba(239,68,68,0.2)',
+          borderRadius: 16,
+          padding: '16px 18px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <HeartPulse size={14} color="#f87171" />
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-2)' }}>
+                Position-Weighted Roster Injuries (QB • OL • Skill • Defense)
+              </span>
+            </div>
+            <span style={{ fontSize: 10, color: (differentials.injury_diff || 0) >= 0 ? 'var(--green)' : '#f87171', fontWeight: 700 }}>
+              {(differentials.injury_diff || 0) > 0 ? `Health Advantage: ${home_team.abbr} (+${differentials.injury_diff})` : ((differentials.injury_diff || 0) < 0 ? `Health Advantage: ${away_team.abbr} (+${Math.abs(differentials.injury_diff)})` : 'Even Health')}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* Away Injuries */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 12,
+              padding: '12px 14px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--teal-bright)' }}>{away_team.abbr} Injuries</span>
+                <span style={{ fontSize: 10, color: 'var(--text-3)' }}>Impact: <strong style={{ color: '#f87171' }}>{inj.away_index} pts</strong></span>
+              </div>
+              {inj.away_injuries && inj.away_injuries.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {inj.away_injuries.slice(0, 4).map((p, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ color: 'var(--text-1)', fontWeight: 600 }}>
+                        {p.name} <span style={{ color: 'var(--text-3)', fontSize: 10 }}>({p.position}{p.is_starter ? ' - Starter' : ''})</span>
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
+                        background: p.status === 'Out' ? 'rgba(239,68,68,0.2)' : 'rgba(234,179,8,0.2)',
+                        color: p.status === 'Out' ? '#f87171' : '#facc15'
+                      }}>
+                        {p.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>No major reported starter injuries</div>
+              )}
+            </div>
+
+            {/* Home Injuries */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 12,
+              padding: '12px 14px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--green)' }}>{home_team.abbr} Injuries</span>
+                <span style={{ fontSize: 10, color: 'var(--text-3)' }}>Impact: <strong style={{ color: '#f87171' }}>{inj.home_index} pts</strong></span>
+              </div>
+              {inj.home_injuries && inj.home_injuries.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {inj.home_injuries.slice(0, 4).map((p, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ color: 'var(--text-1)', fontWeight: 600 }}>
+                        {p.name} <span style={{ color: 'var(--text-3)', fontSize: 10 }}>({p.position}{p.is_starter ? ' - Starter' : ''})</span>
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
+                        background: p.status === 'Out' ? 'rgba(239,68,68,0.2)' : 'rgba(234,179,8,0.2)',
+                        color: p.status === 'Out' ? '#f87171' : '#facc15'
+                      }}>
+                        {p.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>No major reported starter injuries</div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Ensemble Model Breakdown */}
         <div style={{
           background: 'rgba(0,0,0,0.4)',
           border: '1px solid rgba(20,184,166,0.15)',
           borderRadius: 14,
-          padding: '18px 18px',
+          padding: '16px 18px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <ShieldCheck size={14} color="var(--green)" />
             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-3)' }}>
               Ensemble Model Breakdown
@@ -189,16 +356,16 @@ export const MatchupDetailModal = ({ game, onClose }) => {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {[
-              { name: `Logistic Regression`, weight: model_breakdown.logistic_weight, prob: model_breakdown.logistic_home_prob },
-              { name: `HistGradientBoosting`, weight: model_breakdown.boosted_weight, prob: model_breakdown.boosted_home_prob },
+              { name: `Logistic Regression`, weight: model_breakdown.logistic_weight, prob: model_breakdown.logistic_home_win_prob },
+              { name: `HistGradientBoosting`, weight: model_breakdown.boosted_weight, prob: model_breakdown.boosted_home_win_prob },
             ].map((m) => (
               <div key={m.name} style={{
                 background: 'rgba(0,0,0,0.5)',
                 border: '1px solid rgba(255,255,255,0.05)',
                 borderRadius: 12,
-                padding: '14px 16px',
+                padding: '12px 14px',
               }}>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 500, marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 500, marginBottom: 4 }}>
                   {m.name} <span style={{ color: 'var(--teal-bright)', fontWeight: 700 }}>({m.weight}% wt)</span>
                 </div>
                 <div className="font-mono-num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-1)' }}>
