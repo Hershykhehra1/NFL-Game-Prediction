@@ -13,6 +13,7 @@ export function App() {
   const [weeksList, setWeeksList]     = useState(Array.from({ length: 18 }, (_, i) => i + 1));
   const [availableSeasons, setAvailableSeasons] = useState([2026, 2025, 2024]);
   const [activeTab, setActiveTab]     = useState('matchups');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const [games, setGames]             = useState([]);
   const [isLoading, setIsLoading]     = useState(true);
@@ -26,6 +27,7 @@ export function App() {
         if (status.is_loaded) {
           setIsInitializing(false);
           setInitError(null);
+          if (status.last_updated) setLastUpdated(status.last_updated);
           fetchWeeks(season);
           fetchPredictions(season, week);
         } else if (status.error) {
@@ -50,7 +52,11 @@ export function App() {
   const fetchPredictions = (s, w) => {
     setIsLoading(true);
     getPredictions(s, w)
-      .then((data) => { setGames(data.games || []); setIsLoading(false); })
+      .then((data) => {
+        setGames(data.games || []);
+        if (data.last_updated) setLastUpdated(data.last_updated);
+        setIsLoading(false);
+      })
       .catch(() => setIsLoading(false));
   };
 
@@ -87,6 +93,7 @@ export function App() {
         isLoaded={!isInitializing}
         isRefreshing={isLoading}
         onRefresh={handleRefresh}
+        lastUpdated={lastUpdated}
       />
 
       {/* ── Main Content ──────────────────────────── */}
