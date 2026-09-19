@@ -3,7 +3,7 @@
  * All fetch calls are routed through here for a single source of truth.
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, options);
