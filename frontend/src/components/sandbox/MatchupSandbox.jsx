@@ -3,7 +3,8 @@ import { TeamBadge } from '../../utils/teamLogos';
 import { getTeams, predictCustom } from '../../services/api';
 import { 
   Sliders, RefreshCw, Sparkles, ArrowRight, Info, HelpCircle, 
-  BookOpen, ChevronDown, ChevronUp, X, Zap, Shield, Award, Activity, RotateCcw
+  BookOpen, ChevronDown, ChevronUp, X, Zap, Shield, Award, Activity, RotateCcw,
+  Crosshair, UserCheck, HeartPulse
 } from 'lucide-react';
 
 /* ── Metric Information Dictionary ───────────────────────────────────── */
@@ -17,6 +18,36 @@ const METRIC_INFO = {
     impact: 'One of the highest weighted base features. A +100 Elo differential gives the favored team a ~65–70% baseline win probability advantage.',
     benchmark: '0 = Equal teams | ±50 = Moderate edge | ±150 = Massive mismatch',
     direction: 'Positive (+) favors Home team • Negative (−) favors Away team',
+  },
+  qb_epa: {
+    id: 'qb_epa',
+    title: 'Starting QB EPA / Play Differential',
+    tag: 'Quarterback Impact',
+    color: '#f59e0b',
+    meaning: 'Differential in pregame rolling Expected Points Added generated per dropback/play by the starting quarterback.',
+    impact: 'The quarterback is the single highest leverage position in modern football. A positive QB EPA differential heavily drives offensive scoring drives.',
+    benchmark: '0.00 = Equal QB form | +0.10 = Substantial QB edge | +0.25 = Elite MVP vs backup mismatch',
+    direction: 'Positive (+) favors Home starting QB • Negative (−) favors Away starting QB',
+  },
+  qb_cpoe: {
+    id: 'qb_cpoe',
+    title: 'Starting QB CPOE Differential (%)',
+    tag: 'Pass Accuracy Form',
+    color: '#a855f7',
+    meaning: 'Completion Percentage Over Expected measures passer ball placement and completion success after accounting for target separation, throw distance, and pressure.',
+    impact: 'Reflects true throwing accuracy and downfield efficiency independent of receiver run-after-catch.',
+    benchmark: '0.0% = Equal accuracy | ±3.0% = Noticeable precision edge | ±6.0% = Laser accuracy advantage',
+    direction: 'Positive (+) means Home QB exceeds expected completion probability by more',
+  },
+  injury: {
+    id: 'injury',
+    title: 'Position-Weighted Roster Health Advantage',
+    tag: 'Injuries & Availability',
+    color: '#f87171',
+    meaning: 'Differential in aggregate depth-chart weighted injuries (Away Injury Penalty minus Home Injury Penalty) across QB, Offensive Line, Skill Pass Catchers, and Defense Front/Secondary.',
+    impact: 'Accounts for starter absences along critical line-of-scrimmage units (O-line pass protection and defensive rush). A positive score means the Home team is significantly healthier.',
+    benchmark: '0.0 pts = Equal health | +2.0 pts = Key starter out | +5.0 pts = Devastating multi-unit injury cluster',
+    direction: 'Positive (+) means Home team is healthier (Away suffers more injuries)',
   },
   epa: {
     id: 'epa',
@@ -140,7 +171,7 @@ const MetricInfoBox = ({ metricKey, onClose }) => {
         </div>
 
         <div>
-          <span style={{ fontWeight: 700, color: 'var(--green-neon)', display: 'inline-block', marginRight: 4 }}>
+          <span style={{ fontWeight: 700, color: 'var(--green)', display: 'inline-block', marginRight: 4 }}>
             ⚡ Matchup Impact:
           </span>
           <span style={{ color: 'var(--text-2)' }}>{info.impact}</span>
@@ -259,13 +290,19 @@ export const MatchupSandbox = () => {
   const [teams, setTeams]           = useState([]);
   const [homeTeam, setHomeTeam]     = useState('KC');
   const [awayTeam, setAwayTeam]     = useState('BUF');
+  
+  // Model feature differentials
   const [eloDiff, setEloDiff]             = useState(55);
+  const [qbEpaDiff, setQbEpaDiff]         = useState(0.06);
+  const [qbCpoeDiff, setQbCpoeDiff]       = useState(1.5);
+  const [injuryDiff, setInjuryDiff]       = useState(1.2);
   const [netEpaDiff, setNetEpaDiff]       = useState(0.05);
   const [netSuccessDiff, setNetSuccessDiff] = useState(2.5);
   const [recentMarginDiff, setRecentMarginDiff] = useState(3.0);
   const [turnoverRateDiff, setTurnoverRateDiff] = useState(-0.5);
   const [restDiff, setRestDiff]           = useState(0);
   const [isNeutral, setIsNeutral]         = useState(false);
+  
   const [result, setResult]               = useState(null);
   const [activeInfoKey, setActiveInfoKey] = useState(null);
   const [showFullGuide, setShowFullGuide] = useState(false);
@@ -289,6 +326,11 @@ export const MatchupSandbox = () => {
       turnover_rate_diff: turnoverRateDiff / 100,
       rest_diff: restDiff,
       neutral_site: isNeutral,
+      qb_epa_diff: qbEpaDiff,
+      qb_cpoe_diff: qbCpoeDiff,
+      injury_diff: injuryDiff,
+      off_injury_diff: injuryDiff * 0.6,
+      def_injury_diff: injuryDiff * 0.4,
     })
       .then(setResult)
       .catch(console.error);
@@ -296,7 +338,7 @@ export const MatchupSandbox = () => {
 
   useEffect(() => {
     handleSimulate();
-  }, [homeTeam, awayTeam, eloDiff, netEpaDiff, netSuccessDiff, recentMarginDiff, turnoverRateDiff, restDiff, isNeutral]);
+  }, [homeTeam, awayTeam, eloDiff, qbEpaDiff, qbCpoeDiff, injuryDiff, netEpaDiff, netSuccessDiff, recentMarginDiff, turnoverRateDiff, restDiff, isNeutral]);
 
   const sign = (v) => (v > 0 ? `+${v}` : `${v}`);
 
@@ -308,6 +350,9 @@ export const MatchupSandbox = () => {
   const applyPreset = (preset) => {
     if (preset === 'even') {
       setEloDiff(0);
+      setQbEpaDiff(0.0);
+      setQbCpoeDiff(0.0);
+      setInjuryDiff(0.0);
       setNetEpaDiff(0.0);
       setNetSuccessDiff(0.0);
       setRecentMarginDiff(0.0);
@@ -316,6 +361,9 @@ export const MatchupSandbox = () => {
       setIsNeutral(false);
     } else if (preset === 'home_power') {
       setEloDiff(120);
+      setQbEpaDiff(0.18);
+      setQbCpoeDiff(4.2);
+      setInjuryDiff(3.5);
       setNetEpaDiff(0.12);
       setNetSuccessDiff(5.0);
       setRecentMarginDiff(9.5);
@@ -324,6 +372,9 @@ export const MatchupSandbox = () => {
       setIsNeutral(false);
     } else if (preset === 'away_upset') {
       setEloDiff(-95);
+      setQbEpaDiff(-0.16);
+      setQbCpoeDiff(-3.8);
+      setInjuryDiff(-3.0);
       setNetEpaDiff(-0.09);
       setNetSuccessDiff(-4.5);
       setRecentMarginDiff(-7.0);
@@ -386,7 +437,7 @@ export const MatchupSandbox = () => {
 
         {/* Instructions Paragraph */}
         <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 1050 }}>
-          The Sandbox allows you to simulate hypothetical game scenarios between any two NFL teams by directly manipulating key statistical feature differentials (<strong>Home Team minus Away Team</strong>). Test what happens if a team gets healthy, catches momentum, experiences turnover issues, or plays on a neutral field.
+          The Sandbox allows you to simulate hypothetical game scenarios between any two NFL teams by directly manipulating key statistical feature differentials (<strong>Home Team minus Away Team</strong>). Test what happens when starting quarterbacks are swapped, teams get healthy, down efficiency shifts, or games move to neutral stadiums.
         </p>
 
         {/* Detailed Guide Accordion */}
@@ -402,7 +453,7 @@ export const MatchupSandbox = () => {
           }}>
             <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ background: 'rgba(16,185,129,0.2)', color: 'var(--green-neon)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>1</span>
+                <span style={{ background: 'rgba(16,185,129,0.2)', color: 'var(--green)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>1</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Choose Teams &amp; Venue</span>
               </div>
               <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
@@ -413,10 +464,10 @@ export const MatchupSandbox = () => {
             <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span style={{ background: 'rgba(20,184,166,0.2)', color: 'var(--teal-bright)', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>2</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Adjust Feature Differentials</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Adjust QB &amp; Roster Metrics</span>
               </div>
               <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
-                Sliders represent <code style={{ color: 'var(--teal-bright)', background: 'rgba(20,184,166,0.1)', padding: '1px 4px', borderRadius: 4 }}>Home − Away</code>. Click the <strong>(i) info icons</strong> beside any metric to see its mathematical definition and model weighting.
+                Sliders represent <code style={{ color: 'var(--teal-bright)', background: 'rgba(20,184,166,0.1)', padding: '1px 4px', borderRadius: 4 }}>Home − Away</code>. Experiment with starting QB efficiency, completion over expected, and multi-position injury recovery.
               </p>
             </div>
 
@@ -426,7 +477,7 @@ export const MatchupSandbox = () => {
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>Instant Machine Learning Output</span>
               </div>
               <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
-                Our trained XGBoost / Random Forest ensemble processes every slider update in real time to calculate win probabilities and victory confidence.
+                Our calibrated ML ensemble processes all 14 differentials in real time to calculate win probabilities and victory confidence.
               </p>
             </div>
           </div>
@@ -634,6 +685,52 @@ export const MatchupSandbox = () => {
               2 — Feature Differentials (Home − Away)
             </SectionTitle>
 
+            {/* Quarterback & Player Metrics */}
+            <div style={{ marginBottom: 14 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                ✦ Quarterback &amp; Roster Health Features
+              </span>
+            </div>
+
+            <SliderRow
+              metricKey="qb_epa"
+              label="Starting QB EPA / Play Diff"
+              value={qbEpaDiff} min={-0.35} max={0.35} step={0.01}
+              displayValue={sign(qbEpaDiff)}
+              onChange={setQbEpaDiff}
+              color="#f59e0b"
+              activeInfoKey={activeInfoKey}
+              onToggleInfo={handleToggleInfo}
+            />
+
+            <SliderRow
+              metricKey="qb_cpoe"
+              label="Starting QB CPOE Diff (%)"
+              value={qbCpoeDiff} min={-10.0} max={10.0} step={0.5}
+              displayValue={`${sign(qbCpoeDiff)}%`}
+              onChange={setQbCpoeDiff}
+              color="#a855f7"
+              activeInfoKey={activeInfoKey}
+              onToggleInfo={handleToggleInfo}
+            />
+
+            <SliderRow
+              metricKey="injury"
+              label="Roster Health Advantage (Pts)"
+              value={injuryDiff} min={-8.0} max={8.0} step={0.2}
+              displayValue={`${sign(injuryDiff)} pts`}
+              onChange={setInjuryDiff}
+              color="#f87171"
+              activeInfoKey={activeInfoKey}
+              onToggleInfo={handleToggleInfo}
+            />
+
+            <div style={{ margin: '22px 0 14px 0', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--teal-bright)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                ✦ Team Power, Drive &amp; Gameflow Features
+              </span>
+            </div>
+
             <SliderRow
               metricKey="elo"
               label="Elo Rating Differential"
@@ -782,6 +879,23 @@ export const MatchupSandbox = () => {
                     <div className="prob-bar-segment home" style={{ width: `${result.home_win_probability}%` }} />
                   </div>
                 </div>
+
+                {/* Breakdown */}
+                {result.model_breakdown && (
+                  <div style={{
+                    background: 'rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: 10,
+                    padding: '10px 12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 11,
+                    color: 'var(--text-3)'
+                  }}>
+                    <span>Logistic: <strong style={{ color: 'var(--text-2)' }}>{result.model_breakdown.logistic_prob}%</strong></span>
+                    <span>Boosted: <strong style={{ color: 'var(--text-2)' }}>{result.model_breakdown.boosted_prob}%</strong></span>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-3)' }}>

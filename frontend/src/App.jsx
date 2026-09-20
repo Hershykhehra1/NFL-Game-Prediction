@@ -11,8 +11,9 @@ export function App() {
   const [season, setSeason]           = useState(2026);
   const [week, setWeek]               = useState(1);
   const [weeksList, setWeeksList]     = useState(Array.from({ length: 18 }, (_, i) => i + 1));
-  const [availableSeasons, setAvailableSeasons] = useState([2026, 2025, 2024]);
+  const [availableSeasons, setAvailableSeasons] = useState([2026, 2025, 2024, 2023, 2022, 2021]);
   const [activeTab, setActiveTab]     = useState('matchups');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const [games, setGames]             = useState([]);
   const [isLoading, setIsLoading]     = useState(true);
@@ -26,8 +27,25 @@ export function App() {
         if (status.is_loaded) {
           setIsInitializing(false);
           setInitError(null);
-          fetchWeeks(season);
-          fetchPredictions(season, week);
+          if (status.last_updated) setLastUpdated(status.last_updated);
+          
+          getWeeks()
+            .then((data) => {
+              const latest = data.latest_season || (data.available_seasons && data.available_seasons[0]) || 2026;
+              if (data.available_seasons?.length > 0) {
+                setAvailableSeasons(data.available_seasons);
+              }
+              if (data.weeks?.length > 0) {
+                setWeeksList(data.weeks);
+              }
+              setSeason(latest);
+              setWeek(1);
+              fetchPredictions(latest, 1);
+            })
+            .catch(() => {
+              fetchWeeks(2026);
+              fetchPredictions(2026, 1);
+            });
         } else if (status.error) {
           setIsInitializing(false);
           setInitError(status.error);
@@ -50,7 +68,11 @@ export function App() {
   const fetchPredictions = (s, w) => {
     setIsLoading(true);
     getPredictions(s, w)
-      .then((data) => { setGames(data.games || []); setIsLoading(false); })
+      .then((data) => {
+        setGames(data.games || []);
+        if (data.last_updated) setLastUpdated(data.last_updated);
+        setIsLoading(false);
+      })
       .catch(() => setIsLoading(false));
   };
 
@@ -87,6 +109,7 @@ export function App() {
         isLoaded={!isInitializing}
         isRefreshing={isLoading}
         onRefresh={handleRefresh}
+        lastUpdated={lastUpdated}
       />
 
       {/* ── Main Content ──────────────────────────── */}
