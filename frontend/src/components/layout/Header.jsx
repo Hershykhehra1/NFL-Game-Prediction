@@ -11,7 +11,7 @@ const TABS = [
 export const Header = ({
   season,
   setSeason,
-  availableSeasons = [2024, 2023, 2022, 2021],
+  availableSeasons = [2026, 2025, 2024, 2023, 2022, 2021],
   week,
   setWeek,
   weeks = Array.from({ length: 18 }, (_, i) => i + 1),
@@ -92,7 +92,11 @@ export const Header = ({
             <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Season</span>
             <select
               value={season}
-              onChange={(e) => setSeason(Number(e.target.value))}
+              onChange={(e) => {
+                const s = Number(e.target.value);
+                setSeason(s);
+                if (setWeek) setWeek(1);
+              }}
             >
               {availableSeasons.map((s) => (
                 <option key={s} value={s}>{s}</option>

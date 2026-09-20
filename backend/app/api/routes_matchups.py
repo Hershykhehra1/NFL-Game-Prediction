@@ -39,20 +39,26 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         print("Fitting final forecaster ensemble...")
         models, weights = predictor.fit_forecaster(completed, scores)
 
+        if not model_data.empty and "season" in model_data.columns:
+            CACHE.latest_season = int(model_data["season"].max())
+
         CACHE.model_data = model_data
         CACHE.completed = completed
         CACHE.models = models
         CACHE.weights = weights
+        CACHE.scores = scores
         CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
         CACHE.is_fallback = False
-        print("NFL Prediction pipeline successfully loaded via live nflreadpy!")
+        print(f"NFL Prediction pipeline successfully loaded via live nflreadpy! Latest season: {CACHE.latest_season}")
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"nflreadpy network load error: {e}. Switching to offline fallback dataset.")
         model_data, completed, models, weights, scores = predictor.generate_fallback_model_data()
+        if not model_data.empty and "season" in model_data.columns:
+            CACHE.latest_season = int(model_data["season"].max())
         CACHE.model_data = model_data
         CACHE.completed = completed
         CACHE.models = models
@@ -73,6 +79,7 @@ def get_status():
         "is_fallback": CACHE.is_fallback,
         "error": CACHE.error,
         "last_updated": CACHE.last_updated,
+        "latest_season": CACHE.latest_season,
         "features": predictor.FEATURES,
         "weights": CACHE.weights if CACHE.weights else {}
     }
@@ -84,42 +91,48 @@ def refresh_pipeline():
     """Trigger an on-demand re-fetch from nflreadpy for live completed game scores and injury updates."""
     if CACHE.is_loading:
         return {"status": "in_progress", "message": "Pipeline is currently updating."}
-    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2024))
+    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026))
     thread.start()
     return {"status": "started", "message": "Re-fetching latest live NFL game data and updating models."}
 
 
 @router.get("/weeks")
-def get_weeks(season: int = 2024):
+def get_weeks(season: int = None):
     """Return available seasons and weeks."""
     if not CACHE.is_loaded:
         raise HTTPException(status_code=503, detail="Pipeline is still initializing. Please try again shortly.")
     
     df = CACHE.model_data
-    season_df = df[df["season"] == season]
+    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if (df is not None and not df.empty and "season" in df.columns) else [2026, 2025, 2024, 2023, 2022, 2021]
+    latest_season = all_seasons[0] if all_seasons else 2026
+    
+    selected_season = season if season is not None else latest_season
+    season_df = df[df["season"] == selected_season] if df is not None else pd.DataFrame()
     weeks = sorted(season_df["week"].unique().tolist()) if not season_df.empty else list(range(1, 19))
     
-    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if not CACHE.is_fallback else [2024, 2023, 2022, 2021]
-    available_seasons = [s for s in all_seasons if s <= 2024] or all_seasons
-    
     return {
-        "season": season,
+        "season": selected_season,
+        "latest_season": latest_season,
         "weeks": weeks,
-        "available_seasons": available_seasons
+        "available_seasons": all_seasons
     }
 
 
 @router.get("/predictions")
-def get_predictions(season: int = 2024, week: int = 1):
+def get_predictions(season: int = None, week: int = 1):
     """Return matchup predictions, starting QB comparisons, and injury differentials."""
     if not CACHE.is_loaded:
         raise HTTPException(status_code=503, detail="Model pipeline loading in background. Please retry in a moment.")
     
     df = CACHE.model_data
-    week_games = df[(df["season"] == season) & (df["week"] == week)].copy()
+    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if (df is not None and not df.empty and "season" in df.columns) else [2026, 2025, 2024, 2023, 2022, 2021]
+    latest_season = all_seasons[0] if all_seasons else 2026
+    selected_season = season if season is not None else latest_season
+
+    week_games = df[(df["season"] == selected_season) & (df["week"] == week)].copy()
     
     if week_games.empty:
-        return {"season": season, "week": week, "games": []}
+        return {"season": selected_season, "week": week, "games": []}
 
     features = predictor.FEATURES
     models = CACHE.models

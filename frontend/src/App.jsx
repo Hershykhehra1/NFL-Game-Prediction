@@ -8,10 +8,10 @@ import { AlertCircle, RefreshCw, Cpu } from 'lucide-react';
 import { getStatus, getWeeks, getPredictions, triggerRefresh } from './services/api';
 
 export function App() {
-  const [season, setSeason]           = useState(2024);
+  const [season, setSeason]           = useState(2026);
   const [week, setWeek]               = useState(1);
   const [weeksList, setWeeksList]     = useState(Array.from({ length: 18 }, (_, i) => i + 1));
-  const [availableSeasons, setAvailableSeasons] = useState([2024, 2023, 2022, 2021]);
+  const [availableSeasons, setAvailableSeasons] = useState([2026, 2025, 2024, 2023, 2022, 2021]);
   const [activeTab, setActiveTab]     = useState('matchups');
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -28,8 +28,24 @@ export function App() {
           setIsInitializing(false);
           setInitError(null);
           if (status.last_updated) setLastUpdated(status.last_updated);
-          fetchWeeks(season);
-          fetchPredictions(season, week);
+          
+          getWeeks()
+            .then((data) => {
+              const latest = data.latest_season || (data.available_seasons && data.available_seasons[0]) || 2026;
+              if (data.available_seasons?.length > 0) {
+                setAvailableSeasons(data.available_seasons);
+              }
+              if (data.weeks?.length > 0) {
+                setWeeksList(data.weeks);
+              }
+              setSeason(latest);
+              setWeek(1);
+              fetchPredictions(latest, 1);
+            })
+            .catch(() => {
+              fetchWeeks(2026);
+              fetchPredictions(2026, 1);
+            });
         } else if (status.error) {
           setIsInitializing(false);
           setInitError(status.error);
