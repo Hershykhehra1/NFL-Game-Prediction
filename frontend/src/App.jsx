@@ -8,10 +8,10 @@ import { AlertCircle, RefreshCw, Cpu } from 'lucide-react';
 import { getStatus, getWeeks, getPredictions, triggerRefresh } from './services/api';
 
 export function App() {
-  const [season, setSeason]           = useState(2026);
+  const [season, setSeason]           = useState(2024);
   const [week, setWeek]               = useState(1);
   const [weeksList, setWeeksList]     = useState(Array.from({ length: 18 }, (_, i) => i + 1));
-  const [availableSeasons, setAvailableSeasons] = useState([2026, 2025, 2024]);
+  const [availableSeasons, setAvailableSeasons] = useState([2024, 2023, 2022, 2021]);
   const [activeTab, setActiveTab]     = useState('matchups');
   const [lastUpdated, setLastUpdated] = useState(null);
 

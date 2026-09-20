@@ -84,13 +84,13 @@ def refresh_pipeline():
     """Trigger an on-demand re-fetch from nflreadpy for live completed game scores and injury updates."""
     if CACHE.is_loading:
         return {"status": "in_progress", "message": "Pipeline is currently updating."}
-    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026))
+    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2024))
     thread.start()
     return {"status": "started", "message": "Re-fetching latest live NFL game data and updating models."}
 
 
 @router.get("/weeks")
-def get_weeks(season: int = 2026):
+def get_weeks(season: int = 2024):
     """Return available seasons and weeks."""
     if not CACHE.is_loaded:
         raise HTTPException(status_code=503, detail="Pipeline is still initializing. Please try again shortly.")
@@ -98,7 +98,9 @@ def get_weeks(season: int = 2026):
     df = CACHE.model_data
     season_df = df[df["season"] == season]
     weeks = sorted(season_df["week"].unique().tolist()) if not season_df.empty else list(range(1, 19))
-    available_seasons = sorted(df["season"].unique().tolist()) if not CACHE.is_fallback else [2026, 2025, 2024]
+    
+    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if not CACHE.is_fallback else [2024, 2023, 2022, 2021]
+    available_seasons = [s for s in all_seasons if s <= 2024] or all_seasons
     
     return {
         "season": season,
@@ -108,7 +110,7 @@ def get_weeks(season: int = 2026):
 
 
 @router.get("/predictions")
-def get_predictions(season: int = 2026, week: int = 1):
+def get_predictions(season: int = 2024, week: int = 1):
     """Return matchup predictions, starting QB comparisons, and injury differentials."""
     if not CACHE.is_loaded:
         raise HTTPException(status_code=503, detail="Model pipeline loading in background. Please retry in a moment.")

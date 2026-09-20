@@ -15,7 +15,7 @@ class StateCache:
         self.weights: Dict[str, float] = {"logistic": 48.2, "boosted": 51.8}
         self.scores: Any = None
         self.schedule: Any = None
-        self.latest_season: int = 2026
+        self.latest_season: int = 2024
         self.last_updated: Optional[str] = None
 
 CACHE = StateCache()

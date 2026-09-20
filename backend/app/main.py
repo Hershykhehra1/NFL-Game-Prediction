@@ -14,7 +14,7 @@ from app.api.routes_analytics import router as analytics_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start the ML pipeline in a background thread on server startup."""
-    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026), daemon=True)
+    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2024), daemon=True)
     thread.start()
     yield
     # Cleanup (if needed) goes here

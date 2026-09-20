@@ -11,7 +11,7 @@ const TABS = [
 export const Header = ({
   season,
   setSeason,
-  availableSeasons = [2026, 2025, 2024],
+  availableSeasons = [2024, 2023, 2022, 2021],
   week,
   setWeek,
   weeks = Array.from({ length: 18 }, (_, i) => i + 1),
