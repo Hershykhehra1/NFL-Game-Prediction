@@ -500,11 +500,6 @@ def generate_fallback_model_data():
             def_injury_diff = round(injury_diff * 0.4, 1)
 
             home_win_prob = 1.0 / (1.0 + math.exp(- (elo_diff / 180.0 + net_epa_diff * 3.5 + qb_epa_diff * 2.0)))
-            
-            h_wins_sim = max(0, int(round((week_num - 1) * (h_elo / 3000.0))))
-            h_losses_sim = max(0, (week_num - 1) - h_wins_sim)
-            a_wins_sim = max(0, int(round((week_num - 1) * (a_elo / 3000.0))))
-            a_losses_sim = max(0, (week_num - 1) - a_wins_sim)
 
             rows.append({
                 "game_id": f"2026_{week_num:02d}_{away}_{home}",
@@ -514,12 +509,12 @@ def generate_fallback_model_data():
                 "matchup": f"{away} @ {home}",
                 "home_team": home,
                 "away_team": away,
-                "home_score": None if week_num > 1 else (27 if home_win_prob > 0.5 else 17),
-                "away_score": None if week_num > 1 else (17 if home_win_prob > 0.5 else 24),
-                "home_wins": h_wins_sim,
-                "home_losses": h_losses_sim,
-                "away_wins": a_wins_sim,
-                "away_losses": a_losses_sim,
+                "home_score": None,
+                "away_score": None,
+                "home_wins": 0,
+                "home_losses": 0,
+                "away_wins": 0,
+                "away_losses": 0,
                 "elo_diff": elo_diff,
                 "win_pct_diff": round((h_elo - a_elo) / 800.0, 2),
                 "point_diff_diff": recent_margin_diff,
