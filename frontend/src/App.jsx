@@ -11,12 +11,12 @@ export function App() {
   const [season, setSeason]           = useState(2026);
   const [week, setWeek]               = useState(1);
   const [weeksList, setWeeksList]     = useState(Array.from({ length: 18 }, (_, i) => i + 1));
-  const [availableSeasons, setAvailableSeasons] = useState([2026, 2025, 2024, 2023, 2022, 2021]);
   const [activeTab, setActiveTab]     = useState('matchups');
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const [games, setGames]             = useState([]);
   const [isLoading, setIsLoading]     = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [initError, setInitError]     = useState(null);
 
@@ -29,38 +29,30 @@ export function App() {
           setInitError(null);
           if (status.last_updated) setLastUpdated(status.last_updated);
           
-          getWeeks()
+          getWeeks(2026)
             .then((data) => {
-              const latest = data.latest_season || (data.available_seasons && data.available_seasons[0]) || 2026;
-              if (data.available_seasons?.length > 0) {
-                setAvailableSeasons(data.available_seasons);
-              }
               if (data.weeks?.length > 0) {
                 setWeeksList(data.weeks);
               }
-              setSeason(latest);
-              setWeek(1);
-              fetchPredictions(latest, 1);
+              fetchPredictions(2026, week);
             })
             .catch(() => {
-              fetchWeeks(2026);
-              fetchPredictions(2026, 1);
+              fetchPredictions(2026, week);
             });
         } else if (status.error) {
           setIsInitializing(false);
           setInitError(status.error);
         } else {
-          setTimeout(checkStatus, 3000);
+          setTimeout(checkStatus, 2500);
         }
       })
-      .catch(() => setTimeout(checkStatus, 3000));
+      .catch(() => setTimeout(checkStatus, 2500));
   };
 
   const fetchWeeks = (s) => {
     getWeeks(s)
       .then((data) => {
         if (data.weeks?.length > 0) setWeeksList(data.weeks);
-        if (data.available_seasons)  setAvailableSeasons(data.available_seasons);
       })
       .catch(console.error);
   };
@@ -80,18 +72,40 @@ export function App() {
 
   useEffect(() => {
     if (!isInitializing) {
-      fetchWeeks(season);
       fetchPredictions(season, week);
     }
-  }, [season, week]);
+  }, [week]);
 
-  const handleRefresh = () => {
-    setIsLoading(true);
-    triggerRefresh()
-      .catch(() => {})
-      .finally(() => {
-        setTimeout(() => fetchPredictions(season, week), 600);
-      });
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await triggerRefresh();
+      // Poll getStatus until pipeline finishes retraining
+      const pollRefresh = () => {
+        getStatus()
+          .then((status) => {
+            if (!status.is_loading) {
+              if (status.last_updated) setLastUpdated(status.last_updated);
+              getPredictions(season, week)
+                .then((data) => {
+                  setGames(data.games || []);
+                  if (data.last_updated) setLastUpdated(data.last_updated);
+                  setIsRefreshing(false);
+                })
+                .catch(() => setIsRefreshing(false));
+            } else {
+              setTimeout(pollRefresh, 1000);
+            }
+          })
+          .catch(() => {
+            setTimeout(pollRefresh, 1500);
+          });
+      };
+      setTimeout(pollRefresh, 1000);
+    } catch (err) {
+      console.error("Refresh trigger error:", err);
+      setIsRefreshing(false);
+    }
   };
 
   /* ── Render ───────────────────────────────────── */
@@ -99,15 +113,13 @@ export function App() {
     <div className="app-shell">
       <Header
         season={season}
-        setSeason={setSeason}
-        availableSeasons={availableSeasons}
         week={week}
         setWeek={setWeek}
         weeks={weeksList}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isLoaded={!isInitializing}
-        isRefreshing={isLoading}
+        isRefreshing={isRefreshing || isLoading}
         onRefresh={handleRefresh}
         lastUpdated={lastUpdated}
       />

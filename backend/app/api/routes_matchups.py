@@ -47,7 +47,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         CACHE.models = models
         CACHE.weights = weights
         CACHE.scores = scores
-        CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M %p")
+        CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M:%S %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
         CACHE.is_fallback = False
@@ -64,7 +64,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         CACHE.models = models
         CACHE.weights = weights
         CACHE.scores = scores
-        CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M %p")
+        CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M:%S %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
         CACHE.is_fallback = True
@@ -91,6 +91,7 @@ def refresh_pipeline():
     """Trigger an on-demand re-fetch from nflreadpy for live completed game scores and injury updates."""
     if CACHE.is_loading:
         return {"status": "in_progress", "message": "Pipeline is currently updating."}
+    CACHE.is_loading = True
     thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026))
     thread.start()
     return {"status": "started", "message": "Re-fetching latest live NFL game data and updating models."}
@@ -103,7 +104,7 @@ def get_weeks(season: int = None):
         raise HTTPException(status_code=503, detail="Pipeline is still initializing. Please try again shortly.")
     
     df = CACHE.model_data
-    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if (df is not None and not df.empty and "season" in df.columns) else [2026, 2025, 2024, 2023, 2022, 2021]
+    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if (df is not None and not df.empty and "season" in df.columns) else [2026]
     latest_season = all_seasons[0] if all_seasons else 2026
     
     selected_season = season if season is not None else latest_season
@@ -114,7 +115,7 @@ def get_weeks(season: int = None):
         "season": selected_season,
         "latest_season": latest_season,
         "weeks": weeks,
-        "available_seasons": all_seasons
+        "available_seasons": [2026]
     }
 
 
@@ -125,7 +126,7 @@ def get_predictions(season: int = None, week: int = 1):
         raise HTTPException(status_code=503, detail="Model pipeline loading in background. Please retry in a moment.")
     
     df = CACHE.model_data
-    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if (df is not None and not df.empty and "season" in df.columns) else [2026, 2025, 2024, 2023, 2022, 2021]
+    all_seasons = sorted(df["season"].unique().tolist(), reverse=True) if (df is not None and not df.empty and "season" in df.columns) else [2026]
     latest_season = all_seasons[0] if all_seasons else 2026
     selected_season = season if season is not None else latest_season
 

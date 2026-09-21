@@ -86,22 +86,23 @@ export const Header = ({
             </div>
           )}
 
-          {/* Season Picker */}
-          <div className="season-select">
+          {/* Current Season Badge */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: 10,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--text-1)',
+            }}
+          >
             <Calendar size={14} color="var(--green)" />
-            <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Season</span>
-            <select
-              value={season}
-              onChange={(e) => {
-                const s = Number(e.target.value);
-                setSeason(s);
-                if (setWeek) setWeek(1);
-              }}
-            >
-              {availableSeasons.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            <span>2026 Season</span>
           </div>
 
           {/* Refresh Button */}
