@@ -473,7 +473,21 @@ def generate_fallback_model_data():
     models = {"logistic": log_model, "boosted": boosted_model}
     weights = {"logistic": 0.482, "boosted": 0.518}
 
+    COMPLETED_2026_SCORES = {
+        (1, "ARI", "LAC"): (26, 14), (1, "ATL", "PIT"): (13, 20), (1, "BAL", "IND"): (41, 23), (1, "BUF", "HOU"): (36, 31),
+        (1, "CHI", "CAR"): (59, 37), (1, "CLE", "JAX"): (10, 34), (1, "DAL", "NYG"): (20, 28), (1, "DEN", "KC"): (10, 31),
+        (1, "GB", "MIN"): (22, 39), (1, "MIA", "LV"): (13, 27), (1, "NE", "SEA"): (10, 13), (1, "NO", "DET"): (30, 31),
+        (1, "NYJ", "TEN"): (23, 10), (1, "SF", "LA"): (27, 7), (1, "TB", "CIN"): (27, 33), (1, "WAS", "PHI"): (22, 24),
+        (2, "CAR", "ATL"): (34, 3), (2, "CIN", "HOU"): (20, 6), (2, "CLE", "TB"): (23, 19), (2, "DET", "BUF"): (31, 41),
+        (2, "GB", "NYJ"): (20, 17), (2, "JAX", "DEN"): (13, 20), (2, "LV", "LAC"): (26, 14), (2, "MIA", "SF"): (13, 35),
+        (2, "MIN", "CHI"): (9, 3), (2, "NO", "BAL"): (24, 17), (2, "PHI", "TEN"): (24, 20), (2, "PIT", "NE"): (3, 20),
+        (2, "SEA", "ARI"): (31, 7), (2, "WAS", "DAL"): (20, 37)
+    }
+
+    team_records = {team: {"wins": 0, "losses": 0} for team in TEAM_METADATA}
+
     for week_num, matchup_pairs in enumerate(WEEKLY_SCHEDULE_TEMPLATE, start=1):
+        week_start_records = {team: dict(team_records[team]) for team in team_records}
         for idx, (away, home) in enumerate(matchup_pairs):
             h_meta = TEAM_METADATA.get(home, {})
             a_meta = TEAM_METADATA.get(away, {})
@@ -482,6 +496,23 @@ def generate_fallback_model_data():
             h_qb = h_meta.get("qb", "Starting QB")
             a_qb = a_meta.get("qb", "Starting QB")
             
+            h_wins = week_start_records.get(home, {}).get("wins", 0)
+            h_losses = week_start_records.get(home, {}).get("losses", 0)
+            a_wins = week_start_records.get(away, {}).get("wins", 0)
+            a_losses = week_start_records.get(away, {}).get("losses", 0)
+
+            completed_score = COMPLETED_2026_SCORES.get((week_num, away, home))
+            if completed_score:
+                a_score, h_score = completed_score
+                if h_score > a_score:
+                    team_records[home]["wins"] += 1
+                    team_records[away]["losses"] += 1
+                elif a_score > h_score:
+                    team_records[away]["wins"] += 1
+                    team_records[home]["losses"] += 1
+            else:
+                a_score, h_score = None, None
+
             elo_diff = h_elo - a_elo + 55.0
             net_epa_diff = round((h_elo - a_elo) / 1000.0 + random.uniform(-0.06, 0.06), 3)
             net_success_diff = round((net_epa_diff * 45.0) + random.uniform(-2.0, 2.0), 1)
@@ -499,8 +530,6 @@ def generate_fallback_model_data():
             off_injury_diff = round(injury_diff * 0.6, 1)
             def_injury_diff = round(injury_diff * 0.4, 1)
 
-            home_win_prob = 1.0 / (1.0 + math.exp(- (elo_diff / 180.0 + net_epa_diff * 3.5 + qb_epa_diff * 2.0)))
-
             rows.append({
                 "game_id": f"2026_{week_num:02d}_{away}_{home}",
                 "season": 2026,
@@ -509,12 +538,12 @@ def generate_fallback_model_data():
                 "matchup": f"{away} @ {home}",
                 "home_team": home,
                 "away_team": away,
-                "home_score": None,
-                "away_score": None,
-                "home_wins": 0,
-                "home_losses": 0,
-                "away_wins": 0,
-                "away_losses": 0,
+                "home_score": h_score,
+                "away_score": a_score,
+                "home_wins": h_wins,
+                "home_losses": h_losses,
+                "away_wins": a_wins,
+                "away_losses": a_losses,
                 "elo_diff": elo_diff,
                 "win_pct_diff": round((h_elo - a_elo) / 800.0, 2),
                 "point_diff_diff": recent_margin_diff,
