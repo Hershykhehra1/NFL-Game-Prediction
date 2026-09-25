@@ -64,14 +64,44 @@ def load_inputs(start_season: int, predict_season: int):
     ]
     pbp = pbp_polars.select([c for c in wanted_pbp if c in pbp_polars.columns]).to_pandas()
 
-    # 3. Player Stats (Passing / Rushing)
+    # 3. Player Stats (Passing / Rushing / Receiving / Defense / Kicking / Punting / Returns)
     player_stats_polars = nfl.load_player_stats(seasons)
     wanted_ps = [
-        "player_id", "player_name", "player_display_name", "position", "season", "week",
-        "game_id", "team", "attempts", "completions", "passing_yards", "passing_tds",
-        "passing_interceptions", "passing_epa", "passing_cpoe", "rushing_epa"
+        # Identity
+        "player_id", "player_name", "player_display_name", "position", "position_group",
+        "season", "week", "season_type", "game_id", "team", "opponent_team",
+        # Passing
+        "completions", "attempts", "passing_yards", "passing_tds", "passing_interceptions",
+        "sacks_suffered", "sack_yards_lost", "passing_air_yards", "passing_yards_after_catch",
+        "passing_first_downs", "passing_epa", "passing_cpoe", "passing_2pt_conversions",
+        # Rushing
+        "carries", "rushing_yards", "rushing_tds", "rushing_fumbles", "rushing_fumbles_lost",
+        "rushing_first_downs", "rushing_epa",
+        # Receiving
+        "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_fumbles",
+        "receiving_fumbles_lost", "receiving_air_yards", "receiving_yards_after_catch",
+        "receiving_first_downs", "receiving_epa", "target_share", "wopr",
+        # Defense
+        "def_tackles_solo", "def_tackles_with_assist", "def_tackle_assists",
+        "def_tackles_for_loss", "def_fumbles_forced", "def_sacks", "def_sack_yards",
+        "def_qb_hits", "def_interceptions", "def_interception_yards", "def_pass_defended",
+        "def_tds", "def_fumbles", "def_safeties",
+        # Kicking
+        "fg_made", "fg_att", "fg_missed", "fg_blocked", "fg_long", "fg_pct",
+        "fg_made_0_19", "fg_made_20_29", "fg_made_30_39", "fg_made_40_49",
+        "fg_made_50_59", "fg_made_60_", "pat_made", "pat_att", "pat_missed",
+        # Punting
+        "pt_att", "pt_yards", "pt_long", "pt_inside_20", "pt_net_yards",
+        "pt_out_of_bounds", "pt_downed", "pt_touchback", "pt_fair_caught", "pt_blocked",
+        # Returns
+        "punt_returns", "punt_return_yards", "kickoff_returns", "kickoff_return_yards",
+        "special_teams_tds",
+        # Fantasy
+        "fantasy_points", "fantasy_points_ppr",
     ]
-    player_stats = player_stats_polars.select([c for c in wanted_ps if c in player_stats_polars.columns]).to_pandas()
+    all_ps_cols = [c for c in wanted_ps if c in player_stats_polars.columns]
+    player_stats = player_stats_polars.select(all_ps_cols).to_pandas()
+
 
     # 4. Injuries
     injuries = nfl.load_injuries(seasons).to_pandas()
@@ -587,4 +617,170 @@ def generate_fallback_model_data():
     ]
     scores = pd.DataFrame(scores_rows)
 
-    return model_data, model_data.dropna(subset=["home_score"]), models, weights, scores
+    # ── Synthetic Player Box Scores for completed fallback games ──
+    ps_rows = []
+    completed_df = model_data.dropna(subset=["home_score"])
+    for _, grow in completed_df.iterrows():
+        gid = grow["game_id"]
+        home = grow["home_team"]
+        away = grow["away_team"]
+        h_meta = TEAM_METADATA.get(home, {})
+        a_meta = TEAM_METADATA.get(away, {})
+        h_qb = h_meta.get("qb", "Starting QB")
+        a_qb = a_meta.get("qb", "Starting QB")
+
+        rng = np.random.RandomState(abs(hash(gid)) % (2**31))
+
+        def _synth_qb(gid, team, name, pos="QB", seed_mult=1.0):
+            att = int(rng.randint(22, 45))
+            comp = int(rng.binomial(att, 0.63 * seed_mult))
+            yds = int(rng.randint(160, 380))
+            tds = int(rng.randint(1, 4))
+            ints_ = int(rng.randint(0, 3))
+            sacks = int(rng.randint(0, 4))
+            epa = round(float(rng.uniform(-2, 12)), 3)
+            cpoe = round(float(rng.uniform(-3, 7)), 1)
+            carries = int(rng.randint(0, 8))
+            rush_yds = int(rng.randint(0, 45))
+            rush_tds = int(rng.randint(0, 2))
+            return {"game_id": gid, "team": team, "player_display_name": name, "position": pos,
+                    "attempts": att, "completions": comp, "passing_yards": yds, "passing_tds": tds,
+                    "passing_interceptions": ints_, "sacks_suffered": sacks, "passing_epa": epa,
+                    "passing_cpoe": cpoe, "carries": carries, "rushing_yards": rush_yds, "rushing_tds": rush_tds,
+                    "rushing_fumbles_lost": 0, "rushing_epa": round(float(rng.uniform(-1, 3)), 3),
+                    "targets": 0, "receptions": 0, "receiving_yards": 0, "receiving_tds": 0,
+                    "receiving_fumbles_lost": 0, "receiving_epa": 0.0, "target_share": 0.0,
+                    "def_tackles_solo": 0, "def_tackle_assists": 0, "def_tackles_for_loss": 0.0,
+                    "def_sacks": 0.0, "def_interceptions": 0, "def_fumbles_forced": 0,
+                    "def_fumbles": 0, "def_pass_defended": 0, "def_tds": 0,
+                    "fg_made": 0, "fg_att": 0, "fg_long": 0, "pat_made": 0, "pat_att": 0,
+                    "pt_att": 0, "pt_yards": 0, "pt_long": 0, "pt_inside_20": 0, "pt_net_yards": 0, "pt_touchback": 0,
+                    "punt_returns": 0, "punt_return_yards": 0, "kickoff_returns": 0, "kickoff_return_yards": 0,
+                    "special_teams_tds": 0}
+
+        def _synth_rb(gid, team, fname, seed=1):
+            carries = int(rng.randint(8, 22))
+            ryds = int(rng.randint(40, 140))
+            rtds = int(rng.randint(0, 2))
+            tgt = int(rng.randint(2, 7))
+            rec = int(rng.binomial(tgt, 0.70))
+            recyds = int(rng.randint(10, 60))
+            return {"game_id": gid, "team": team, "player_display_name": fname, "position": "RB",
+                    "attempts": 0, "completions": 0, "passing_yards": 0, "passing_tds": 0,
+                    "passing_interceptions": 0, "sacks_suffered": 0, "passing_epa": 0.0, "passing_cpoe": 0.0,
+                    "carries": carries, "rushing_yards": ryds, "rushing_tds": rtds, "rushing_fumbles_lost": int(rng.randint(0, 2)),
+                    "rushing_epa": round(float(rng.uniform(-1, 5)), 3),
+                    "targets": tgt, "receptions": rec, "receiving_yards": recyds, "receiving_tds": 0,
+                    "receiving_fumbles_lost": 0, "receiving_epa": round(float(rng.uniform(-0.5, 2)), 3),
+                    "target_share": round(float(rng.uniform(0.05, 0.15)), 3),
+                    "def_tackles_solo": 0, "def_tackle_assists": 0, "def_tackles_for_loss": 0.0,
+                    "def_sacks": 0.0, "def_interceptions": 0, "def_fumbles_forced": 0,
+                    "def_fumbles": 0, "def_pass_defended": 0, "def_tds": 0,
+                    "fg_made": 0, "fg_att": 0, "fg_long": 0, "pat_made": 0, "pat_att": 0,
+                    "pt_att": 0, "pt_yards": 0, "pt_long": 0, "pt_inside_20": 0, "pt_net_yards": 0, "pt_touchback": 0,
+                    "punt_returns": 0, "punt_return_yards": 0, "kickoff_returns": int(rng.randint(0, 3)),
+                    "kickoff_return_yards": int(rng.randint(0, 70)), "special_teams_tds": 0}
+
+        def _synth_wr(gid, team, fname, pos="WR"):
+            tgt = int(rng.randint(3, 12))
+            rec = int(rng.binomial(tgt, 0.65))
+            recyds = int(rng.randint(30, 130))
+            rectds = int(rng.randint(0, 2))
+            return {"game_id": gid, "team": team, "player_display_name": fname, "position": pos,
+                    "attempts": 0, "completions": 0, "passing_yards": 0, "passing_tds": 0,
+                    "passing_interceptions": 0, "sacks_suffered": 0, "passing_epa": 0.0, "passing_cpoe": 0.0,
+                    "carries": 0, "rushing_yards": int(rng.randint(0, 15)), "rushing_tds": 0, "rushing_fumbles_lost": 0,
+                    "rushing_epa": 0.0,
+                    "targets": tgt, "receptions": rec, "receiving_yards": recyds, "receiving_tds": rectds,
+                    "receiving_fumbles_lost": 0, "receiving_epa": round(float(rng.uniform(-0.5, 4)), 3),
+                    "target_share": round(float(rng.uniform(0.10, 0.28)), 3),
+                    "def_tackles_solo": 0, "def_tackle_assists": 0, "def_tackles_for_loss": 0.0,
+                    "def_sacks": 0.0, "def_interceptions": 0, "def_fumbles_forced": 0,
+                    "def_fumbles": 0, "def_pass_defended": 0, "def_tds": 0,
+                    "fg_made": 0, "fg_att": 0, "fg_long": 0, "pat_made": 0, "pat_att": 0,
+                    "pt_att": 0, "pt_yards": 0, "pt_long": 0, "pt_inside_20": 0, "pt_net_yards": 0, "pt_touchback": 0,
+                    "punt_returns": int(rng.randint(0, 3)), "punt_return_yards": int(rng.randint(0, 35)),
+                    "kickoff_returns": 0, "kickoff_return_yards": 0, "special_teams_tds": 0}
+
+        def _synth_def(gid, team, fname, pos):
+            solo = int(rng.randint(2, 10))
+            ast = int(rng.randint(0, 5))
+            tfl = round(float(rng.choice([0, 0, 0.5, 1.0, 1.5])), 1)
+            sacks = round(float(rng.choice([0, 0, 0, 0.5, 1.0])), 1)
+            ints_ = int(rng.choice([0, 0, 0, 1]))
+            ff = int(rng.choice([0, 0, 0, 1]))
+            pd_ = int(rng.randint(0, 3))
+            return {"game_id": gid, "team": team, "player_display_name": fname, "position": pos,
+                    "attempts": 0, "completions": 0, "passing_yards": 0, "passing_tds": 0,
+                    "passing_interceptions": 0, "sacks_suffered": 0, "passing_epa": 0.0, "passing_cpoe": 0.0,
+                    "carries": 0, "rushing_yards": 0, "rushing_tds": 0, "rushing_fumbles_lost": 0, "rushing_epa": 0.0,
+                    "targets": 0, "receptions": 0, "receiving_yards": 0, "receiving_tds": 0,
+                    "receiving_fumbles_lost": 0, "receiving_epa": 0.0, "target_share": 0.0,
+                    "def_tackles_solo": solo, "def_tackle_assists": ast, "def_tackles_for_loss": tfl,
+                    "def_sacks": sacks, "def_interceptions": ints_, "def_fumbles_forced": ff,
+                    "def_fumbles": int(rng.choice([0, 0, 1])), "def_pass_defended": pd_, "def_tds": 0,
+                    "fg_made": 0, "fg_att": 0, "fg_long": 0, "pat_made": 0, "pat_att": 0,
+                    "pt_att": 0, "pt_yards": 0, "pt_long": 0, "pt_inside_20": 0, "pt_net_yards": 0, "pt_touchback": 0,
+                    "punt_returns": 0, "punt_return_yards": 0, "kickoff_returns": 0, "kickoff_return_yards": 0,
+                    "special_teams_tds": 0}
+
+        def _synth_k(gid, team, fname):
+            fg_att = int(rng.randint(1, 5))
+            fg_made = int(rng.binomial(fg_att, 0.83))
+            fg_long = int(rng.randint(32, 57))
+            pat_att = int(rng.randint(1, 6))
+            pat_made = int(rng.binomial(pat_att, 0.97))
+            return {"game_id": gid, "team": team, "player_display_name": fname, "position": "K",
+                    "attempts": 0, "completions": 0, "passing_yards": 0, "passing_tds": 0,
+                    "passing_interceptions": 0, "sacks_suffered": 0, "passing_epa": 0.0, "passing_cpoe": 0.0,
+                    "carries": 0, "rushing_yards": 0, "rushing_tds": 0, "rushing_fumbles_lost": 0, "rushing_epa": 0.0,
+                    "targets": 0, "receptions": 0, "receiving_yards": 0, "receiving_tds": 0,
+                    "receiving_fumbles_lost": 0, "receiving_epa": 0.0, "target_share": 0.0,
+                    "def_tackles_solo": 0, "def_tackle_assists": 0, "def_tackles_for_loss": 0.0,
+                    "def_sacks": 0.0, "def_interceptions": 0, "def_fumbles_forced": 0,
+                    "def_fumbles": 0, "def_pass_defended": 0, "def_tds": 0,
+                    "fg_made": fg_made, "fg_att": fg_att, "fg_long": fg_long, "pat_made": pat_made, "pat_att": pat_att,
+                    "pt_att": 0, "pt_yards": 0, "pt_long": 0, "pt_inside_20": 0, "pt_net_yards": 0, "pt_touchback": 0,
+                    "punt_returns": 0, "punt_return_yards": 0, "kickoff_returns": 0, "kickoff_return_yards": 0,
+                    "special_teams_tds": 0}
+
+        def _synth_p(gid, team, fname):
+            punts = int(rng.randint(3, 7))
+            pyds = int(rng.randint(punts * 36, punts * 52))
+            plong = int(rng.randint(42, 65))
+            pin20 = int(rng.randint(1, punts))
+            pnet = int(pyds * rng.uniform(0.8, 0.92))
+            ptb = int(rng.randint(0, 3))
+            return {"game_id": gid, "team": team, "player_display_name": fname, "position": "P",
+                    "attempts": 0, "completions": 0, "passing_yards": 0, "passing_tds": 0,
+                    "passing_interceptions": 0, "sacks_suffered": 0, "passing_epa": 0.0, "passing_cpoe": 0.0,
+                    "carries": 0, "rushing_yards": 0, "rushing_tds": 0, "rushing_fumbles_lost": 0, "rushing_epa": 0.0,
+                    "targets": 0, "receptions": 0, "receiving_yards": 0, "receiving_tds": 0,
+                    "receiving_fumbles_lost": 0, "receiving_epa": 0.0, "target_share": 0.0,
+                    "def_tackles_solo": 0, "def_tackle_assists": 0, "def_tackles_for_loss": 0.0,
+                    "def_sacks": 0.0, "def_interceptions": 0, "def_fumbles_forced": 0,
+                    "def_fumbles": 0, "def_pass_defended": 0, "def_tds": 0,
+                    "fg_made": 0, "fg_att": 0, "fg_long": 0, "pat_made": 0, "pat_att": 0,
+                    "pt_att": punts, "pt_yards": pyds, "pt_long": plong, "pt_inside_20": pin20,
+                    "pt_net_yards": pnet, "pt_touchback": ptb,
+                    "punt_returns": 0, "punt_return_yards": 0, "kickoff_returns": 0, "kickoff_return_yards": 0,
+                    "special_teams_tds": 0}
+
+        for team_abbr, qb_name, suffix in [(home, h_qb, "H"), (away, a_qb, "A")]:
+            ps_rows.append(_synth_qb(gid, team_abbr, qb_name))
+            ps_rows.append(_synth_rb(gid, team_abbr, f"{team_abbr} RB1"))
+            ps_rows.append(_synth_rb(gid, team_abbr, f"{team_abbr} RB2"))
+            ps_rows.append(_synth_wr(gid, team_abbr, f"{team_abbr} WR1", "WR"))
+            ps_rows.append(_synth_wr(gid, team_abbr, f"{team_abbr} WR2", "WR"))
+            ps_rows.append(_synth_wr(gid, team_abbr, f"{team_abbr} TE1", "TE"))
+            for dpos, dname_suffix in [("LB", "LB1"), ("LB", "LB2"), ("LB", "LB3"),
+                                       ("CB", "CB1"), ("CB", "CB2"), ("S", "S1"),
+                                       ("DE", "DE1"), ("DT", "DT1")]:
+                ps_rows.append(_synth_def(gid, team_abbr, f"{team_abbr} {dname_suffix}", dpos))
+            ps_rows.append(_synth_k(gid, team_abbr, f"{team_abbr} Kicker"))
+            ps_rows.append(_synth_p(gid, team_abbr, f"{team_abbr} Punter"))
+
+    fallback_player_stats = pd.DataFrame(ps_rows) if ps_rows else pd.DataFrame()
+
+    return model_data, model_data.dropna(subset=["home_score"]), models, weights, scores, fallback_player_stats
+

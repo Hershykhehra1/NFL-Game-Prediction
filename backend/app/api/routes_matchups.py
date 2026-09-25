@@ -47,6 +47,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         CACHE.models = models
         CACHE.weights = weights
         CACHE.scores = scores
+        CACHE.player_stats = player_stats  # Cache full player stats for box score endpoint
         CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M:%S %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
@@ -56,7 +57,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         import traceback
         traceback.print_exc()
         print(f"nflreadpy network load error: {e}. Switching to offline fallback dataset.")
-        model_data, completed, models, weights, scores = predictor.generate_fallback_model_data()
+        model_data, completed, models, weights, scores, fallback_player_stats = predictor.generate_fallback_model_data()
         if not model_data.empty and "season" in model_data.columns:
             CACHE.latest_season = int(model_data["season"].max())
         CACHE.model_data = model_data
@@ -64,6 +65,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         CACHE.models = models
         CACHE.weights = weights
         CACHE.scores = scores
+        CACHE.player_stats = fallback_player_stats  # Synthetic player stats for fallback mode
         CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M:%S %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
@@ -286,3 +288,244 @@ def get_teams():
             "qb": data.get("qb", "Starting QB"),
         })
     return {"teams": sorted(teams_list, key=lambda x: x["name"])}
+
+
+def _safe_float(val, default=0.0):
+    """Safely convert a value to float, returning default if NaN or None."""
+    try:
+        v = float(val)
+        return default if math.isnan(v) or math.isinf(v) else v
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(val, default=0):
+    """Safely convert a value to int, returning default if NaN or None."""
+    try:
+        v = float(val)
+        if math.isnan(v) or math.isinf(v):
+            return default
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+@router.get("/boxscore/{game_id}")
+def get_boxscore(game_id: str):
+    """Return per-player box score data for a specific game, grouped by team and stat category."""
+    if not CACHE.is_loaded:
+        raise HTTPException(status_code=503, detail="Pipeline initializing.")
+
+    # Look up the game in model_data to get home/away teams and completion status
+    df = CACHE.model_data
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail="No model data available.")
+
+    game_rows = df[df["game_id"].astype(str) == str(game_id)]
+    if game_rows.empty:
+        raise HTTPException(status_code=404, detail=f"Game '{game_id}' not found.")
+
+    game_row = game_rows.iloc[0]
+    home_team = str(game_row["home_team"])
+    away_team = str(game_row["away_team"])
+    is_completed = not (pd.isna(game_row.get("home_score", None)) or pd.isna(game_row.get("away_score", None)))
+
+    if not is_completed:
+        return {
+            "game_id": game_id,
+            "is_completed": False,
+            "home_team": home_team,
+            "away_team": away_team,
+            "home": None,
+            "away": None,
+        }
+
+    ps = CACHE.player_stats
+
+    if ps is None or (hasattr(ps, 'empty') and ps.empty):
+        return {
+            "game_id": game_id,
+            "is_completed": True,
+            "home_team": home_team,
+            "away_team": away_team,
+            "home": _build_empty_boxscore(),
+            "away": _build_empty_boxscore(),
+        }
+
+    # Filter player stats for this game
+    if isinstance(ps, pd.DataFrame):
+        game_ps = ps[ps["game_id"].astype(str) == str(game_id)].copy()
+    else:
+        game_ps = ps
+
+    home_ps = game_ps[game_ps["team"].isin([home_team])] if not game_ps.empty else pd.DataFrame()
+    away_ps = game_ps[game_ps["team"].isin([away_team])] if not game_ps.empty else pd.DataFrame()
+
+    return {
+        "game_id": game_id,
+        "is_completed": True,
+        "home_team": home_team,
+        "away_team": away_team,
+        "home": _build_team_boxscore(home_ps, home_team),
+        "away": _build_team_boxscore(away_ps, away_team),
+    }
+
+
+def _build_empty_boxscore():
+    return {"passing": [], "rushing": [], "receiving": [], "defense": [], "kicking": [], "punting": [], "returns": []}
+
+
+def _build_team_boxscore(ps: pd.DataFrame, team_abbr: str) -> dict:
+    """Build a structured box score dict from player stats DataFrame for one team."""
+    if ps is None or (hasattr(ps, 'empty') and ps.empty):
+        return _build_empty_boxscore()
+
+    passing = []
+    rushing = []
+    receiving = []
+    defense = []
+    kicking = []
+    punting = []
+    returns = []
+
+    for _, row in ps.iterrows():
+        name = str(row.get("player_display_name", row.get("player_name", "Unknown")))
+        pos = str(row.get("position", ""))
+
+        # -- Passing
+        attempts = _safe_int(row.get("attempts", 0))
+        comps = _safe_int(row.get("completions", 0))
+        pass_yds = _safe_int(row.get("passing_yards", 0))
+        pass_tds = _safe_int(row.get("passing_tds", 0))
+        ints = _safe_int(row.get("passing_interceptions", 0))
+        sacks = _safe_int(row.get("sacks_suffered", 0))
+        pass_epa = _safe_float(row.get("passing_epa", 0.0))
+        cpoe = _safe_float(row.get("passing_cpoe", 0.0))
+        if attempts > 0 or pass_yds != 0:
+            comp_pct = round(comps / attempts * 100, 1) if attempts > 0 else 0.0
+            passing.append({
+                "name": name, "position": pos,
+                "completions": comps, "attempts": attempts, "comp_pct": comp_pct,
+                "passing_yards": pass_yds, "passing_tds": pass_tds,
+                "interceptions": ints, "sacks": sacks,
+                "passing_epa": round(pass_epa, 3), "cpoe": round(cpoe, 1),
+            })
+
+        # -- Rushing
+        carries = _safe_int(row.get("carries", 0))
+        rush_yds = _safe_int(row.get("rushing_yards", 0))
+        rush_tds = _safe_int(row.get("rushing_tds", 0))
+        rush_fum = _safe_int(row.get("rushing_fumbles_lost", 0))
+        rush_epa = _safe_float(row.get("rushing_epa", 0.0))
+        if carries > 0 or rush_yds != 0:
+            avg_ypc = round(rush_yds / carries, 1) if carries > 0 else 0.0
+            rushing.append({
+                "name": name, "position": pos,
+                "carries": carries, "rushing_yards": rush_yds,
+                "avg_ypc": avg_ypc, "rushing_tds": rush_tds,
+                "fumbles_lost": rush_fum, "rushing_epa": round(rush_epa, 3),
+            })
+
+        # -- Receiving
+        targets = _safe_int(row.get("targets", 0))
+        recs = _safe_int(row.get("receptions", 0))
+        rec_yds = _safe_int(row.get("receiving_yards", 0))
+        rec_tds = _safe_int(row.get("receiving_tds", 0))
+        rec_fum = _safe_int(row.get("receiving_fumbles_lost", 0))
+        rec_epa = _safe_float(row.get("receiving_epa", 0.0))
+        tgt_share = _safe_float(row.get("target_share", 0.0))
+        if targets > 0 or rec_yds != 0:
+            catch_pct = round(recs / targets * 100, 1) if targets > 0 else 0.0
+            avg_ypr = round(rec_yds / recs, 1) if recs > 0 else 0.0
+            receiving.append({
+                "name": name, "position": pos,
+                "targets": targets, "receptions": recs, "catch_pct": catch_pct,
+                "receiving_yards": rec_yds, "avg_ypr": avg_ypr,
+                "receiving_tds": rec_tds, "fumbles_lost": rec_fum,
+                "receiving_epa": round(rec_epa, 3), "target_share": round(tgt_share * 100, 1),
+            })
+
+        # -- Defense
+        solo = _safe_int(row.get("def_tackles_solo", 0))
+        assist = _safe_int(row.get("def_tackle_assists", 0))
+        total_tkl = solo + assist
+        tfl = _safe_float(row.get("def_tackles_for_loss", 0.0))
+        def_sacks = _safe_float(row.get("def_sacks", 0.0))
+        def_ints = _safe_int(row.get("def_interceptions", 0))
+        ff = _safe_int(row.get("def_fumbles_forced", 0))
+        def_fr = _safe_int(row.get("def_fumbles", 0))
+        pd_count = _safe_int(row.get("def_pass_defended", 0))
+        def_tds = _safe_int(row.get("def_tds", 0))
+        if total_tkl > 0 or def_sacks > 0 or def_ints > 0:
+            defense.append({
+                "name": name, "position": pos,
+                "total_tackles": total_tkl, "solo_tackles": solo, "assist_tackles": assist,
+                "tackles_for_loss": round(tfl, 1), "sacks": round(def_sacks, 1),
+                "interceptions": def_ints, "forced_fumbles": ff,
+                "fumble_recoveries": def_fr, "passes_defended": pd_count,
+                "defensive_tds": def_tds,
+            })
+
+        # -- Kicking
+        fg_made = _safe_int(row.get("fg_made", 0))
+        fg_att = _safe_int(row.get("fg_att", 0))
+        fg_long = _safe_int(row.get("fg_long", 0))
+        pat_made = _safe_int(row.get("pat_made", 0))
+        pat_att = _safe_int(row.get("pat_att", 0))
+        if fg_att > 0 or pat_att > 0:
+            fg_pct = round(fg_made / fg_att * 100, 1) if fg_att > 0 else 0.0
+            kicking.append({
+                "name": name, "position": pos,
+                "fg_made": fg_made, "fg_att": fg_att, "fg_pct": fg_pct, "fg_long": fg_long,
+                "pat_made": pat_made, "pat_att": pat_att,
+            })
+
+        # -- Punting
+        pt_att = _safe_int(row.get("pt_att", 0))
+        pt_yds = _safe_int(row.get("pt_yards", 0))
+        pt_long = _safe_int(row.get("pt_long", 0))
+        pt_in20 = _safe_int(row.get("pt_inside_20", 0))
+        pt_net = _safe_int(row.get("pt_net_yards", 0))
+        pt_tb = _safe_int(row.get("pt_touchback", 0))
+        if pt_att > 0:
+            avg_punt = round(pt_yds / pt_att, 1) if pt_att > 0 else 0.0
+            net_avg = round(pt_net / pt_att, 1) if pt_att > 0 else 0.0
+            punting.append({
+                "name": name, "position": pos,
+                "punts": pt_att, "punt_yards": pt_yds, "avg_punt": avg_punt,
+                "net_avg": net_avg, "inside_20": pt_in20,
+                "long": pt_long, "touchbacks": pt_tb,
+            })
+
+        # -- Returns
+        kr = _safe_int(row.get("kickoff_returns", 0))
+        kr_yds = _safe_int(row.get("kickoff_return_yards", 0))
+        pr = _safe_int(row.get("punt_returns", 0))
+        pr_yds = _safe_int(row.get("punt_return_yards", 0))
+        st_tds = _safe_int(row.get("special_teams_tds", 0))
+        if kr > 0 or pr > 0:
+            returns.append({
+                "name": name, "position": pos,
+                "kickoff_returns": kr, "kickoff_return_yards": kr_yds,
+                "kr_avg": round(kr_yds / kr, 1) if kr > 0 else 0.0,
+                "punt_returns": pr, "punt_return_yards": pr_yds,
+                "pr_avg": round(pr_yds / pr, 1) if pr > 0 else 0.0,
+                "return_tds": st_tds,
+            })
+
+    # Sort each category
+    passing.sort(key=lambda x: x["passing_yards"], reverse=True)
+    rushing.sort(key=lambda x: x["rushing_yards"], reverse=True)
+    receiving.sort(key=lambda x: x["receiving_yards"], reverse=True)
+    defense.sort(key=lambda x: x["total_tackles"], reverse=True)
+    kicking.sort(key=lambda x: x["fg_made"], reverse=True)
+
+    return {
+        "passing": passing,
+        "rushing": rushing,
+        "receiving": receiving,
+        "defense": defense,
+        "kicking": kicking,
+        "punting": punting,
+        "returns": returns,
+    }

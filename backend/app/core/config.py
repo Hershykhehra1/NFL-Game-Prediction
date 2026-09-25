@@ -17,5 +17,6 @@ class StateCache:
         self.schedule: Any = None
         self.latest_season: int = 2026
         self.last_updated: Optional[str] = None
+        self.player_stats: Any = None  # Full player stats for box score endpoint
 
 CACHE = StateCache()

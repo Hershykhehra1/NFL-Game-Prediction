@@ -36,6 +36,9 @@ export const getPowerRankings = () => apiFetch('/api/power-rankings');
 /** Fetch all teams */
 export const getTeams = () => apiFetch('/api/teams');
 
+/** Fetch per-player box score for a completed game */
+export const getBoxscore = (gameId) => apiFetch(`/api/boxscore/${encodeURIComponent(gameId)}`);
+
 /** Submit a custom sandbox prediction */
 export const predictCustom = (payload) =>
   apiFetch('/api/predict-custom', {
@@ -45,3 +48,4 @@ export const predictCustom = (payload) =>
   });
 
 export { API_URL };
+

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Shield, BarChart3, Sliders, Trophy, Calendar, RefreshCw, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, BarChart3, Sliders, Trophy, Calendar, RefreshCw, Clock, Menu, X, ChevronDown } from 'lucide-react';
 
 const TABS = [
   { id: 'matchups',  label: 'Matchups',       Icon: Shield    },
@@ -22,10 +22,37 @@ export const Header = ({
   onRefresh,
   lastUpdated,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [menuOpen]);
+
+  // Close menu on tab change
+  const handleTabChange = (id) => {
+    setActiveTab(id);
+    setMenuOpen(false);
+  };
+
+  const activeTabInfo = TABS.find(t => t.id === activeTab);
+
   return (
     <header className="navbar">
       {/* ── Main Navbar ───────────────────────────── */}
-      <div className="navbar-inner">
+      <div className="navbar-inner" ref={menuRef}>
 
         {/* Brand */}
         <div className="brand">
@@ -34,16 +61,16 @@ export const Header = ({
           </div>
           <div>
             <div className="brand-title">GAMELYTICS</div>
-            <div className="brand-sub">NFL Matchup Forecasting Engine</div>
+            <div className="brand-sub hide-mobile">NFL Matchup Forecasting Engine</div>
           </div>
         </div>
 
-        {/* Nav Tabs */}
-        <nav className="nav-tabs">
+        {/* Nav Tabs — Desktop */}
+        <nav className="nav-tabs desktop-only">
           {TABS.map(({ id, label, Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => handleTabChange(id)}
               className={`nav-tab ${activeTab === id ? 'active' : ''}`}
             >
               <Icon size={14} />
@@ -53,22 +80,12 @@ export const Header = ({
         </nav>
 
         {/* Right Controls */}
-        <div className="nav-controls" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="nav-controls">
 
-          {/* Last Refreshed Time Badge */}
+          {/* Last Refreshed Time Badge - desktop only */}
           {lastUpdated && (
             <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 10,
-                padding: '6px 10px',
-                fontSize: 11,
-                color: 'var(--text-3)',
-              }}
+              className="sync-badge desktop-only"
               title="Timestamp when NFL data and player injuries were last synchronized into model memory"
             >
               <span
@@ -79,6 +96,7 @@ export const Header = ({
                   background: isRefreshing ? '#facc15' : 'var(--green)',
                   boxShadow: isRefreshing ? '0 0 8px #facc15' : '0 0 8px var(--green)',
                   display: 'inline-block',
+                  flexShrink: 0,
                 }}
               />
               <Clock size={12} color="var(--text-3)" />
@@ -86,62 +104,134 @@ export const Header = ({
             </div>
           )}
 
-          {/* Current Season Badge */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: 10,
-              padding: '6px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--text-1)',
-            }}
-          >
+          {/* Current Season Badge — desktop only */}
+          <div className="season-badge desktop-only">
             <Calendar size={14} color="var(--green)" />
             <span>2026 Season</span>
           </div>
 
           {/* Refresh Button */}
           <button
-            className="icon-btn"
+            className="icon-btn refresh-btn"
             onClick={onRefresh}
             disabled={isRefreshing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              width: 'auto',
-              borderRadius: 10,
-            }}
             title="Recalculate models and pull latest injury reports & scores from nflreadpy"
           >
             <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            <span style={{ fontSize: 11, fontWeight: 700 }}>
-              {isRefreshing ? 'Updating…' : 'Recalculate'}
-            </span>
+            <span className="refresh-label">{isRefreshing ? 'Updating…' : 'Recalculate'}</span>
+          </button>
+
+          {/* Hamburger — Mobile only */}
+          <button
+            className="hamburger-btn mobile-only"
+            onClick={() => setMenuOpen(v => !v)}
+            aria-label="Toggle navigation menu"
+            aria-expanded={menuOpen}
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
+
+        {/* ── Mobile Dropdown Menu ─────────────────── */}
+        {menuOpen && (
+          <div className="mobile-menu">
+            {/* Active tab indicator */}
+            <div className="mobile-menu-section-label">Navigation</div>
+            {TABS.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => handleTabChange(id)}
+                className={`mobile-nav-item ${activeTab === id ? 'active' : ''}`}
+              >
+                <Icon size={16} />
+                <span>{label}</span>
+                {activeTab === id && (
+                  <span className="mobile-nav-active-dot" />
+                )}
+              </button>
+            ))}
+
+            {/* Season badge in mobile menu */}
+            <div className="mobile-menu-divider" />
+            <div className="mobile-menu-section-label">Status</div>
+            <div className="mobile-meta-row">
+              <Calendar size={13} color="var(--green)" />
+              <span>2026 NFL Season</span>
+            </div>
+            {lastUpdated && (
+              <div className="mobile-meta-row">
+                <span
+                  style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: isRefreshing ? '#facc15' : 'var(--green)',
+                    flexShrink: 0,
+                  }}
+                />
+                <Clock size={13} color="var(--text-3)" />
+                <span>Synced: <strong style={{ color: 'var(--teal-bright)' }}>{lastUpdated}</strong></span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ── Week Selector (Matchups only) ─────────── */}
+      {/* ── Week Selector ─────────────── */}
       {activeTab === 'matchups' && (
-        <div className="week-bar">
-          <span className="week-label">Regular Season</span>
-          {weeks.map((w) => (
-            <button
-              key={w}
-              onClick={() => setWeek(w)}
-              className={`week-pill ${week === w ? 'active' : ''}`}
-            >
-              Wk {w}
-            </button>
-          ))}
-        </div>
+        <>
+          {/* Desktop: scrollable pills */}
+          <div className="week-bar desktop-only">
+            <span className="week-label">Regular Season</span>
+            {weeks.map((w) => (
+              <button
+                key={w}
+                onClick={() => setWeek(w)}
+                className={`week-pill ${week === w ? 'active' : ''}`}
+              >
+                Wk {w}
+              </button>
+            ))}
+          </div>
+
+          {/* Mobile: compact dropdown + prev/next arrows */}
+          <div className="week-bar-mobile mobile-only">
+            <span className="week-label-mobile">Week</span>
+
+            <div className="week-mobile-controls">
+              <button
+                className="week-arrow-btn"
+                onClick={() => setWeek(w => Math.max(weeks[0], w - 1))}
+                disabled={week <= weeks[0]}
+                aria-label="Previous week"
+              >
+                ‹
+              </button>
+
+              <div className="week-dropdown-wrap">
+                <select
+                  value={week}
+                  onChange={e => setWeek(Number(e.target.value))}
+                  className="week-select"
+                >
+                  {weeks.map(w => (
+                    <option key={w} value={w}>Week {w}</option>
+                  ))}
+                </select>
+                <ChevronDown size={12} className="week-select-chevron" />
+              </div>
+
+              <button
+                className="week-arrow-btn"
+                onClick={() => setWeek(w => Math.min(weeks[weeks.length - 1], w + 1))}
+                disabled={week >= weeks[weeks.length - 1]}
+                aria-label="Next week"
+              >
+                ›
+              </button>
+            </div>
+
+            <span className="week-season-label">2026 Season</span>
+          </div>
+        </>
       )}
     </header>
   );
