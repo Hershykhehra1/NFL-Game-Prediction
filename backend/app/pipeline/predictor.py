@@ -44,28 +44,58 @@ TEAM_NORM = {
 }
 
 
-def load_inputs(start_season: int, predict_season: int):
-    """Load schedules, PBP, player stats, injuries, and depth charts via nflreadpy."""
+import gc
+
+def load_inputs(start_season: int = 2022, predict_season: int = 2026):
+    """Load schedules, PBP (streamed to game metrics), player stats, injuries, and depth charts via nflreadpy with low memory footprint."""
     seasons = list(range(start_season, predict_season + 1))
+    dl = nfl.downloader.get_downloader()
     
     # 1. Schedules
-    schedule = nfl.load_schedules(seasons).to_pandas()
-    schedule = schedule.loc[schedule["game_type"].eq("REG")].copy()
+    schedule_pl = nfl.load_schedules(seasons)
+    schedule = schedule_pl.filter(schedule_pl["game_type"] == "REG").to_pandas()
     schedule["gameday"] = pd.to_datetime(schedule["gameday"])
     schedule = schedule.sort_values(
         ["season", "gameday", "gametime", "game_id"], na_position="last"
     )
+    del schedule_pl
+    dl.cache.clear()
+    gc.collect()
 
-    # 2. Play-by-Play
-    pbp_polars = nfl.load_pbp(seasons)
+    # 2. Play-by-Play (streamed per season with only required columns to minimize RAM)
     wanted_pbp = [
         "game_id", "posteam", "defteam", "play_type", "epa", "success",
         "interception", "fumble_lost", "qb_kneel", "two_point_attempt",
     ]
-    pbp = pbp_polars.select([c for c in wanted_pbp if c in pbp_polars.columns]).to_pandas()
+    pbp_dfs = []
+    for s in seasons:
+        # Try direct parquet scan first for minimal memory, fallback to nfl.load_pbp
+        pbp_loaded = False
+        url = f"https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{s}.parquet"
+        try:
+            import polars as pl
+            df_s = pl.scan_parquet(url).select(wanted_pbp).collect().to_pandas()
+            pbp_dfs.append(df_s)
+            pbp_loaded = True
+        except Exception:
+            pass
+
+        if not pbp_loaded:
+            try:
+                pbp_s = nfl.load_pbp([s])
+                sub_cols = [c for c in wanted_pbp if c in pbp_s.columns]
+                pbp_dfs.append(pbp_s.select(sub_cols).to_pandas())
+                del pbp_s
+            except Exception as e:
+                print(f"PBP loading skipped/failed for season {s}: {e}")
+        dl.cache.clear()
+        gc.collect()
+
+    pbp = pd.concat(pbp_dfs, ignore_index=True) if pbp_dfs else pd.DataFrame(columns=wanted_pbp)
+    del pbp_dfs
+    gc.collect()
 
     # 3. Player Stats (Passing / Rushing / Receiving / Defense / Kicking / Punting / Returns)
-    player_stats_polars = nfl.load_player_stats(seasons)
     wanted_ps = [
         # Identity
         "player_id", "player_name", "player_display_name", "position", "position_group",
@@ -99,15 +129,57 @@ def load_inputs(start_season: int, predict_season: int):
         # Fantasy
         "fantasy_points", "fantasy_points_ppr",
     ]
-    all_ps_cols = [c for c in wanted_ps if c in player_stats_polars.columns]
-    player_stats = player_stats_polars.select(all_ps_cols).to_pandas()
+    ps_dfs = []
+    for s in seasons:
+        try:
+            ps_s = nfl.load_player_stats([s])
+            sub_cols = [c for c in wanted_ps if c in ps_s.columns]
+            ps_dfs.append(ps_s.select(sub_cols).to_pandas())
+            del ps_s
+            dl.cache.clear()
+            gc.collect()
+        except Exception as e:
+            print(f"Player stats loading skipped/failed for season {s}: {e}")
 
+    player_stats = pd.concat(ps_dfs, ignore_index=True) if ps_dfs else pd.DataFrame(columns=wanted_ps)
+    del ps_dfs
+    gc.collect()
 
     # 4. Injuries
-    injuries = nfl.load_injuries(seasons).to_pandas()
+    wanted_inj = ["season", "week", "team", "full_name", "position", "report_status"]
+    inj_dfs = []
+    for s in seasons:
+        try:
+            inj_s = nfl.load_injuries([s])
+            sub_cols = [c for c in wanted_inj if c in inj_s.columns]
+            inj_dfs.append(inj_s.select(sub_cols).to_pandas())
+            del inj_s
+            dl.cache.clear()
+            gc.collect()
+        except Exception as e:
+            print(f"Injuries loading skipped/failed for season {s}: {e}")
+
+    injuries = pd.concat(inj_dfs, ignore_index=True) if inj_dfs else pd.DataFrame(columns=wanted_inj)
+    del inj_dfs
+    gc.collect()
 
     # 5. Depth Charts
-    depth_charts = nfl.load_depth_charts(seasons).to_pandas()
+    wanted_dc = ["season", "week", "club_code", "full_name", "position", "depth_team"]
+    dc_dfs = []
+    for s in seasons:
+        try:
+            dc_s = nfl.load_depth_charts([s])
+            sub_cols = [c for c in wanted_dc if c in dc_s.columns]
+            dc_dfs.append(dc_s.select(sub_cols).to_pandas())
+            del dc_s
+            dl.cache.clear()
+            gc.collect()
+        except Exception as e:
+            print(f"Depth charts loading skipped/failed for season {s}: {e}")
+
+    depth_charts = pd.concat(dc_dfs, ignore_index=True) if dc_dfs else pd.DataFrame(columns=wanted_dc)
+    del dc_dfs
+    gc.collect()
 
     return schedule, pbp, player_stats, injuries, depth_charts
 
@@ -504,14 +576,21 @@ def generate_fallback_model_data():
     weights = {"logistic": 0.482, "boosted": 0.518}
 
     COMPLETED_2026_SCORES = {
+        # Week 1
         (1, "ARI", "LAC"): (26, 14), (1, "ATL", "PIT"): (13, 20), (1, "BAL", "IND"): (41, 23), (1, "BUF", "HOU"): (36, 31),
         (1, "CHI", "CAR"): (59, 37), (1, "CLE", "JAX"): (10, 34), (1, "DAL", "NYG"): (20, 28), (1, "DEN", "KC"): (10, 31),
         (1, "GB", "MIN"): (22, 39), (1, "MIA", "LV"): (13, 27), (1, "NE", "SEA"): (10, 13), (1, "NO", "DET"): (30, 31),
         (1, "NYJ", "TEN"): (23, 10), (1, "SF", "LA"): (27, 7), (1, "TB", "CIN"): (27, 33), (1, "WAS", "PHI"): (22, 24),
+        # Week 2
         (2, "CAR", "ATL"): (34, 3), (2, "CIN", "HOU"): (20, 6), (2, "CLE", "TB"): (23, 19), (2, "DET", "BUF"): (31, 41),
         (2, "GB", "NYJ"): (20, 17), (2, "JAX", "DEN"): (13, 20), (2, "LV", "LAC"): (26, 14), (2, "MIA", "SF"): (13, 35),
         (2, "MIN", "CHI"): (9, 3), (2, "NO", "BAL"): (24, 17), (2, "PHI", "TEN"): (24, 20), (2, "PIT", "NE"): (3, 20),
-        (2, "SEA", "ARI"): (31, 7), (2, "WAS", "DAL"): (20, 37)
+        (2, "SEA", "ARI"): (31, 7), (2, "WAS", "DAL"): (20, 37), (2, "IND", "KC"): (30, 33), (2, "NYG", "LA"): (6, 28),
+        # Week 3
+        (3, "ATL", "GB"): (35, 14), (3, "LAC", "BUF"): (16, 24), (3, "CAR", "CLE"): (18, 21), (3, "NYJ", "DET"): (24, 31),
+        (3, "HOU", "IND"): (17, 19), (3, "NE", "JAX"): (6, 35), (3, "KC", "MIA"): (24, 10), (3, "TEN", "NYG"): (7, 12),
+        (3, "CIN", "PIT"): (27, 30), (3, "SEA", "WAS"): (31, 33), (3, "ARI", "SF"): (30, 36), (3, "MIN", "TB"): (23, 16),
+        (3, "BAL", "DAL"): (34, 31), (3, "LV", "NO"): (35, 27)
     }
 
     team_records = {team: {"wins": 0, "losses": 0} for team in TEAM_METADATA}
