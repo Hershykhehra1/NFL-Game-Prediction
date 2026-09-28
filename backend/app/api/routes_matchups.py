@@ -13,7 +13,7 @@ from app.pipeline.metadata import TEAM_METADATA
 router = APIRouter()
 
 
-def load_model_pipeline(start_season=2021, predict_season=2026):
+def load_model_pipeline(start_season=2022, predict_season=2026):
     """Load schedules, PBP, player stats, injuries, and depth charts, compute features and fit models."""
     try:
         CACHE.is_loading = True
@@ -35,7 +35,7 @@ def load_model_pipeline(start_season=2021, predict_season=2026):
         completed["home_win"] = completed["home_win"].astype(int)
 
         print("Evaluating walk-forward model scores...")
-        scores = predictor.walk_forward_scores(completed, validation_seasons=4)
+        scores = predictor.walk_forward_scores(completed, validation_seasons=3)
         print("Fitting final forecaster ensemble...")
         models, weights = predictor.fit_forecaster(completed, scores)
 
@@ -94,7 +94,7 @@ def refresh_pipeline():
     if CACHE.is_loading:
         return {"status": "in_progress", "message": "Pipeline is currently updating."}
     CACHE.is_loading = True
-    thread = threading.Thread(target=load_model_pipeline, args=(2021, 2026))
+    thread = threading.Thread(target=load_model_pipeline, args=(2022, 2026))
     thread.start()
     return {"status": "started", "message": "Re-fetching latest live NFL game data and updating models."}
 
