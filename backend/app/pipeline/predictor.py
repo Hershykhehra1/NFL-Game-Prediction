@@ -146,7 +146,7 @@ def load_inputs(start_season: int = 2022, predict_season: int = 2026):
     gc.collect()
 
     # 4. Injuries
-    wanted_inj = ["season", "week", "team", "full_name", "position", "report_status"]
+    wanted_inj = ["season", "week", "team", "full_name", "position", "report_status", "practice_status", "report_primary_injury", "date_modified"]
     inj_dfs = []
     for s in seasons:
         try:
@@ -164,7 +164,7 @@ def load_inputs(start_season: int = 2022, predict_season: int = 2026):
     gc.collect()
 
     # 5. Depth Charts
-    wanted_dc = ["season", "week", "club_code", "full_name", "position", "depth_team"]
+    wanted_dc = ["season", "week", "club_code", "full_name", "position", "depth_team", "depth_position"]
     dc_dfs = []
     for s in seasons:
         try:
@@ -214,6 +214,34 @@ def make_game_metrics(pbp: pd.DataFrame) -> dict[tuple[str, str], dict[str, floa
     }
 
 
+import re
+
+def normalize_player_name(name: str) -> str:
+    """Normalize player names across different data sources (depth charts, injuries, player stats)."""
+    if not name or pd.isna(name):
+        return ""
+    s = str(name).strip()
+    s = re.sub(r"\s+(Jr\.?|Sr\.?|II|III|IV|V)$", "", s, flags=re.IGNORECASE)
+    s = s.replace(".", "").replace("'", "")
+    return " ".join(s.split()).lower()
+
+
+def is_out_or_inactive(report_status: str = None, practice_status: str = None, injury: str = None) -> bool:
+    """Check if an injury status string indicates the player cannot play."""
+    rep = str(report_status or "").lower().strip()
+    prac = str(practice_status or "").lower().strip()
+    
+    # Direct game-status designations
+    if any(x in rep for x in ["out", "reserve", "ir", "doubtful", "inactive", "dnp", "pup", "suspended"]):
+        return True
+    
+    # Practice status indicating non-participation with an active injury
+    if ("did not participate" in prac or "dnp" in prac) and rep in ["questionable", "doubtful", "out"]:
+        return True
+    
+    return False
+
+
 def categorize_position(pos: str) -> str:
     """Categorize raw football position strings into key tactical units."""
     pos = str(pos).upper().strip()
@@ -235,7 +263,7 @@ def get_injury_severity(status: str) -> float:
     if pd.isna(status):
         return 0.0
     s = str(status).strip().title()
-    if s in ["Out", "Injured Reserve", "Ir", "Dnp"]:
+    if s in ["Out", "Injured Reserve", "Ir", "Dnp", "Pup", "Suspended"]:
         return 1.0
     elif s == "Doubtful":
         return 0.75
@@ -246,66 +274,170 @@ def get_injury_severity(status: str) -> float:
     return 0.20
 
 
-def build_injury_database(injuries: pd.DataFrame, depth_charts: pd.DataFrame):
-    """Aggregate position-weighted injury impact and extract key injured players per team/week."""
-    inj_df = injuries.dropna(subset=["season", "week", "team"]).copy()
-    inj_df["week"] = pd.to_numeric(inj_df["week"], errors="coerce").fillna(1).astype(int)
-    inj_df["season"] = pd.to_numeric(inj_df["season"], errors="coerce").fillna(2024).astype(int)
-    inj_df["team_norm"] = inj_df["team"].replace(TEAM_NORM)
-    inj_df["severity"] = inj_df["report_status"].apply(get_injury_severity)
+def build_injury_database(injuries: pd.DataFrame, depth_charts: pd.DataFrame, player_stats: pd.DataFrame = None):
+    """Aggregate position-weighted injury impact and construct dynamic active starting QB resolver."""
+    inj_df = injuries.dropna(subset=["season", "week", "team"]).copy() if injuries is not None and not injuries.empty else pd.DataFrame()
+    if not inj_df.empty:
+        inj_df["week"] = pd.to_numeric(inj_df["week"], errors="coerce").fillna(1).astype(int)
+        inj_df["season"] = pd.to_numeric(inj_df["season"], errors="coerce").fillna(2024).astype(int)
+        inj_df["team_norm"] = inj_df["team"].replace(TEAM_NORM)
+        inj_df["severity"] = inj_df["report_status"].apply(get_injury_severity)
 
-    dc_df = depth_charts.dropna(subset=["season", "week"]).copy()
-    dc_df["week"] = pd.to_numeric(dc_df["week"], errors="coerce").fillna(1).astype(int)
-    dc_df["season"] = pd.to_numeric(dc_df["season"], errors="coerce").fillna(2024).astype(int)
-    dc_df["team_norm"] = dc_df["club_code"].replace(TEAM_NORM)
+    dc_df = depth_charts.dropna(subset=["season", "week"]).copy() if depth_charts is not None and not depth_charts.empty else pd.DataFrame()
+    if not dc_df.empty:
+        dc_df["week"] = pd.to_numeric(dc_df["week"], errors="coerce").fillna(1).astype(int)
+        dc_df["season"] = pd.to_numeric(dc_df["season"], errors="coerce").fillna(2024).astype(int)
+        dc_df["team_norm"] = dc_df["club_code"].replace(TEAM_NORM)
+        dc_df["depth_team_num"] = pd.to_numeric(dc_df["depth_team"], errors="coerce").fillna(99).astype(int)
 
-    dc_starters = dc_df[dc_df["depth_team"].astype(str).isin(["1", "1.0"])][
-        ["season", "week", "team_norm", "full_name", "position"]
-    ].copy().drop_duplicates()
-    dc_starters["is_starter"] = 1
-
-    inj_merged = inj_df.merge(
-        dc_starters[["season", "week", "team_norm", "full_name", "is_starter"]],
-        on=["season", "week", "team_norm", "full_name"],
-        how="left"
-    )
-    inj_merged["is_starter"] = inj_merged["is_starter"].fillna(0)
-    inj_merged["pos_cat"] = inj_merged["position"].apply(categorize_position)
-    inj_merged["impact"] = inj_merged["severity"] * np.where(inj_merged["is_starter"] == 1, 1.0, 0.40)
-
-    inj_units = inj_merged.groupby(["season", "week", "team_norm", "pos_cat"])["impact"].sum().unstack(fill_value=0.0).reset_index()
-    for col in ["QB", "OL", "SKILL", "DEF_FRONT", "DEF_SEC"]:
-        if col not in inj_units.columns:
-            inj_units[col] = 0.0
-
-    # Total weighted injury index
-    inj_units["off_injury_index"] = inj_units["QB"] * 4.0 + inj_units["OL"] * 2.0 + inj_units["SKILL"] * 1.8
-    inj_units["def_injury_index"] = inj_units["DEF_FRONT"] * 1.8 + inj_units["DEF_SEC"] * 1.8
-    inj_units["total_injury_index"] = inj_units["off_injury_index"] + inj_units["def_injury_index"]
-
-    # Injury summary database
-    injury_dict = {(int(r.season), int(r.week), str(r.team_norm)): r._asdict() for r in inj_units.itertuples(index=False)}
-
-    # Top injured players list per team per week
+    # 1. Position-weighted roster injuries calculation
+    injury_dict = {}
     player_list_dict = defaultdict(list)
-    key_injuries = inj_merged[inj_merged["severity"] >= 0.35].copy().sort_values(["impact"], ascending=False)
-    for row in key_injuries.itertuples(index=False):
-        key = (int(row.season), int(row.week), str(row.team_norm))
-        player_list_dict[key].append({
-            "name": str(getattr(row, "full_name", "")),
-            "position": str(getattr(row, "position", "")),
-            "status": str(getattr(row, "report_status", "Questionable")),
-            "is_starter": bool(getattr(row, "is_starter", False)),
-            "unit": str(getattr(row, "pos_cat", "OTHER"))
-        })
+    player_inj_map = {}
+    latest_team_inj_map = defaultdict(dict)
 
-    # Starting QB depth chart mapping
-    dc_qbs = dc_df[(dc_df["position"] == "QB") & (dc_df["depth_team"].astype(str).isin(["1", "1.0"]))][
-        ["season", "week", "team_norm", "full_name"]
-    ].drop_duplicates()
-    qb_depth_dict = {(int(r.season), int(r.week), str(r.team_norm)): str(r.full_name) for r in dc_qbs.itertuples(index=False)}
+    if not inj_df.empty and not dc_df.empty:
+        dc_starters = dc_df[dc_df["depth_team_num"].isin([1])][
+            ["season", "week", "team_norm", "full_name", "position"]
+        ].copy().drop_duplicates()
+        dc_starters["is_starter"] = 1
 
-    return injury_dict, player_list_dict, qb_depth_dict
+        inj_merged = inj_df.merge(
+            dc_starters[["season", "week", "team_norm", "full_name", "is_starter"]],
+            on=["season", "week", "team_norm", "full_name"],
+            how="left"
+        )
+        inj_merged["is_starter"] = inj_merged["is_starter"].fillna(0)
+        inj_merged["pos_cat"] = inj_merged["position"].apply(categorize_position)
+        inj_merged["impact"] = inj_merged["severity"] * np.where(inj_merged["is_starter"] == 1, 1.0, 0.40)
+
+        inj_units = inj_merged.groupby(["season", "week", "team_norm", "pos_cat"])["impact"].sum().unstack(fill_value=0.0).reset_index()
+        for col in ["QB", "OL", "SKILL", "DEF_FRONT", "DEF_SEC"]:
+            if col not in inj_units.columns:
+                inj_units[col] = 0.0
+
+        inj_units["off_injury_index"] = inj_units["QB"] * 4.0 + inj_units["OL"] * 2.0 + inj_units["SKILL"] * 1.8
+        inj_units["def_injury_index"] = inj_units["DEF_FRONT"] * 1.8 + inj_units["DEF_SEC"] * 1.8
+        inj_units["total_injury_index"] = inj_units["off_injury_index"] + inj_units["def_injury_index"]
+
+        injury_dict = {(int(r.season), int(r.week), str(r.team_norm)): r._asdict() for r in inj_units.itertuples(index=False)}
+
+        key_injuries = inj_merged[inj_merged["severity"] >= 0.35].copy().sort_values(["impact"], ascending=False)
+        for row in key_injuries.itertuples(index=False):
+            key = (int(row.season), int(row.week), str(row.team_norm))
+            player_list_dict[key].append({
+                "name": str(getattr(row, "full_name", "")),
+                "position": str(getattr(row, "position", "")),
+                "status": str(getattr(row, "report_status", "Questionable")),
+                "is_starter": bool(getattr(row, "is_starter", False)),
+                "unit": str(getattr(row, "pos_cat", "OTHER"))
+            })
+
+        for r in inj_df.itertuples():
+            status_str = str(getattr(r, "report_status", "") or "")
+            prac_str = str(getattr(r, "practice_status", "") or "")
+            inj_str = str(getattr(r, "report_primary_injury", "") or "")
+            p_name = str(getattr(r, "full_name", "") or "")
+            norm_n = normalize_player_name(p_name)
+            key = (int(r.season), int(r.week), str(r.team_norm), norm_n)
+            player_inj_map[key] = {
+                "report_status": status_str,
+                "practice_status": prac_str,
+                "injury": inj_str,
+                "severity": getattr(r, "severity", 0.0),
+                "is_out": is_out_or_inactive(status_str, prac_str, inj_str)
+            }
+            latest_team_inj_map[(int(r.season), str(r.team_norm))][norm_n] = player_inj_map[key]
+
+    # 2. Hierarchical Depth Chart Mapping per Team & Week (with forward-fill for upcoming weeks)
+    team_dc_map = defaultdict(list)
+    if not dc_df.empty:
+        dc_qbs = dc_df[dc_df["position"] == "QB"].sort_values(["season", "team_norm", "week", "depth_team_num"])
+        for r in dc_qbs.itertuples():
+            team_dc_map[(int(r.season), int(r.week), str(r.team_norm))].append((int(r.depth_team_num), str(r.full_name)))
+
+        # Forward-fill future unplayed weeks with the latest available depth chart
+        for s in dc_qbs["season"].unique():
+            for t in dc_qbs["team_norm"].unique():
+                latest_qbs = []
+                for w in range(1, 24):
+                    if (int(s), int(w), str(t)) in team_dc_map:
+                        latest_qbs = team_dc_map[(int(s), int(w), str(t))]
+                    elif latest_qbs:
+                        team_dc_map[(int(s), int(w), str(t))] = latest_qbs
+
+    # 3. Ground truth actual game starters and historical passer leaders from player stats
+    game_passers = {}
+    team_week_passers = defaultdict(list)
+    if player_stats is not None and not player_stats.empty:
+        ps_clean = player_stats.copy()
+        ps_clean["team_norm"] = ps_clean["team"].replace(TEAM_NORM)
+        for (gid, t), g_ps in ps_clean.groupby(["game_id", "team_norm"]):
+            qbs = g_ps[g_ps["attempts"] > 0].sort_values("attempts", ascending=False)
+            if not qbs.empty:
+                top_p = qbs.iloc[0]
+                game_passers[(str(gid), str(t))] = str(top_p["player_display_name"])
+
+        for (s, w, t), g_ps in ps_clean.groupby(["season", "week", "team_norm"]):
+            qbs = g_ps[g_ps["attempts"] > 0].sort_values("attempts", ascending=False)
+            if not qbs.empty:
+                team_week_passers[(int(s), int(w), str(t))] = [
+                    {"name": str(r["player_display_name"]), "attempts": int(r["attempts"])}
+                    for _, r in qbs.iterrows()
+                ]
+
+    # 4. Dynamic Starting QB Resolver function
+    def resolve_starting_qb(season: int, week: int, team: str, game_id: str = None, is_completed: bool = False) -> str:
+        team_n = TEAM_NORM.get(team, team)
+        # Case A: Completed game with ground-truth passer stats
+        if is_completed and game_id and (str(game_id), str(team_n)) in game_passers:
+            return game_passers[(str(game_id), str(team_n))]
+
+        # Case B: Check depth chart candidates in order of depth rank (1, 2, 3...)
+        candidates = team_dc_map.get((int(season), int(week), str(team_n)), [])
+        
+        # Check if depth #1 is ruled OUT or inactive on injury reports
+        for depth_num, qb_name in candidates:
+            norm_n = normalize_player_name(qb_name)
+            # Check this week's injury report
+            inj_info = player_inj_map.get((int(season), int(week), str(team_n), norm_n))
+            if not inj_info:
+                # Check latest injury report if upcoming week
+                inj_info = latest_team_inj_map.get((int(season), str(team_n)), {}).get(norm_n)
+
+            if inj_info and inj_info.get("is_out", False):
+                # This QB is ruled OUT / IR / Doubtful / Inactive -> Skip to next depth QB
+                continue
+
+            # If depth #1 is Questionable, check if they were benched or backup has been starting
+            if depth_num == 1 and inj_info and inj_info.get("report_status") == "Questionable":
+                # If backup started last game and took all passes while depth #1 was inactive, prefer active starter
+                prev_week_passers = team_week_passers.get((int(season), int(week) - 1, str(team_n)), [])
+                if prev_week_passers and prev_week_passers[0]["name"] != qb_name and len(candidates) > 1:
+                    backup_name = candidates[1][1]
+                    backup_norm = normalize_player_name(backup_name)
+                    backup_inj = player_inj_map.get((int(season), int(week), str(team_n), backup_norm))
+                    if not (backup_inj and backup_inj.get("is_out", False)):
+                        if prev_week_passers[0]["name"] == backup_name:
+                            return backup_name
+
+            # Candidate is available and healthy!
+            return qb_name
+
+        # Case C: Check in-season recent active passer who is healthy
+        for prev_w in range(int(week) - 1, max(0, int(week) - 4), -1):
+            prev_passers = team_week_passers.get((int(season), prev_w, str(team_n)), [])
+            for p_dict in prev_passers:
+                p_name = p_dict["name"]
+                norm_n = normalize_player_name(p_name)
+                inj_info = player_inj_map.get((int(season), int(week), str(team_n), norm_n))
+                if not (inj_info and inj_info.get("is_out", False)):
+                    return p_name
+
+        # Case D: Baseline metadata fallback
+        return TEAM_METADATA.get(team_n, {}).get("qb", "Starting QB")
+
+    return injury_dict, player_list_dict, resolve_starting_qb
 
 
 def build_pregame_features(
@@ -315,8 +447,8 @@ def build_pregame_features(
     injuries: pd.DataFrame,
     depth_charts: pd.DataFrame
 ) -> pd.DataFrame:
-    """Create one pregame feature row per game, incorporating all 3 branches without future leakage."""
-    injury_dict, player_inj_list, qb_depth_dict = build_injury_database(injuries, depth_charts)
+    """Create one pregame feature row per game, incorporating dynamic active starting QBs and injuries."""
+    injury_dict, player_inj_list, resolve_starting_qb = build_injury_database(injuries, depth_charts, player_stats)
 
     ratings = defaultdict(lambda: 1500.0)
     state = defaultdict(lambda: {
@@ -325,7 +457,7 @@ def build_pregame_features(
         "last_game": pd.NaT,
     })
     
-    # Rolling QB history tracking
+    # Rolling QB history tracking (keyed by normalized name and display name)
     qb_history = defaultdict(lambda: {"total_plays": 0, "total_epa": 0.0, "total_cpoe_weighted": 0.0})
 
     rows, active_season = [], None
@@ -334,8 +466,9 @@ def build_pregame_features(
         item = state[team]
         return item[key] if item["games"] else 0.0
 
-    ps_clean = player_stats.copy()
-    ps_clean["team_norm"] = ps_clean["team"].replace(TEAM_NORM)
+    ps_clean = player_stats.copy() if player_stats is not None and not player_stats.empty else pd.DataFrame()
+    if not ps_clean.empty:
+        ps_clean["team_norm"] = ps_clean["team"].replace(TEAM_NORM)
 
     for game in schedule.itertuples(index=False):
         if active_season != game.season:
@@ -370,20 +503,36 @@ def build_pregame_features(
         h_margin = np.mean(state[home]["recent_margins"]) if state[home]["recent_margins"] else 0.0
         a_margin = np.mean(state[away]["recent_margins"]) if state[away]["recent_margins"] else 0.0
 
-        # ── Branch 2: Starting QB Rolling Features ──────────────────────────
-        default_h_qb = TEAM_METADATA.get(home, {}).get("qb", "QB")
-        default_a_qb = TEAM_METADATA.get(away, {}).get("qb", "QB")
-        h_qb_name = qb_depth_dict.get((int(game.season), int(game.week), home), default_h_qb)
-        a_qb_name = qb_depth_dict.get((int(game.season), int(game.week), away), default_a_qb)
+        is_game_completed = not (pd.isna(game.home_score) or pd.isna(game.away_score))
 
-        h_qb_stat = qb_history[h_qb_name]
-        a_qb_stat = qb_history[a_qb_name]
+        # ── Branch 2: Dynamic Starting QB & Rolling Performance ─────────────
+        h_qb_name = resolve_starting_qb(int(game.season), int(game.week), home, getattr(game, "game_id", None), is_game_completed)
+        a_qb_name = resolve_starting_qb(int(game.season), int(game.week), away, getattr(game, "game_id", None), is_game_completed)
 
-        h_qb_epa = (h_qb_stat["total_epa"] / h_qb_stat["total_plays"]) if h_qb_stat["total_plays"] >= 15 else 0.0
-        a_qb_epa = (a_qb_stat["total_epa"] / a_qb_stat["total_plays"]) if a_qb_stat["total_plays"] >= 15 else 0.0
+        h_norm = normalize_player_name(h_qb_name)
+        a_norm = normalize_player_name(a_qb_name)
 
-        h_qb_cpoe = (h_qb_stat["total_cpoe_weighted"] / h_qb_stat["total_plays"]) if h_qb_stat["total_plays"] >= 15 else 0.0
-        a_qb_cpoe = (a_qb_stat["total_cpoe_weighted"] / a_qb_stat["total_plays"]) if a_qb_stat["total_plays"] >= 15 else 0.0
+        h_qb_stat = qb_history.get(h_norm) or qb_history.get(h_qb_name, {"total_plays": 0, "total_epa": 0.0, "total_cpoe_weighted": 0.0})
+        a_qb_stat = qb_history.get(a_norm) or qb_history.get(a_qb_name, {"total_plays": 0, "total_epa": 0.0, "total_cpoe_weighted": 0.0})
+
+        # Calculate QB EPA and CPOE with replacement-level blending for backups/new starters
+        h_plays = h_qb_stat["total_plays"]
+        if h_plays >= 15:
+            h_qb_epa = float(h_qb_stat["total_epa"] / h_plays)
+            h_qb_cpoe = float(h_qb_stat["total_cpoe_weighted"] / h_plays)
+        else:
+            w = min(h_plays / 15.0, 1.0)
+            h_qb_epa = float(w * (h_qb_stat["total_epa"] / max(h_plays, 1)) + (1.0 - w) * -0.065)
+            h_qb_cpoe = float(w * (h_qb_stat["total_cpoe_weighted"] / max(h_plays, 1)) + (1.0 - w) * -2.5)
+
+        a_plays = a_qb_stat["total_plays"]
+        if a_plays >= 15:
+            a_qb_epa = float(a_qb_stat["total_epa"] / a_plays)
+            a_qb_cpoe = float(a_qb_stat["total_cpoe_weighted"] / a_plays)
+        else:
+            w = min(a_plays / 15.0, 1.0)
+            a_qb_epa = float(w * (a_qb_stat["total_epa"] / max(a_plays, 1)) + (1.0 - w) * -0.065)
+            a_qb_cpoe = float(w * (a_qb_stat["total_cpoe_weighted"] / max(a_plays, 1)) + (1.0 - w) * -2.5)
 
         qb_epa_diff = float(h_qb_epa - a_qb_epa)
         qb_cpoe_diff = float(h_qb_cpoe - a_qb_cpoe)
@@ -468,22 +617,23 @@ def build_pregame_features(
                 team_state["turnover"] = 0.72 * team_state["turnover"] + 0.28 * (values["off_turnover"] - values["def_takeaway"])
 
         # Update QB rolling stats from player stats for completed game
-        game_qb_stats = ps_clean[ps_clean["game_id"] == game.game_id]
-        for qb_row in game_qb_stats.itertuples():
-            p_name = getattr(qb_row, "player_name", "")
-            p_display = getattr(qb_row, "player_display_name", "")
-            plays_cnt = getattr(qb_row, "attempts", 0) or 0
-            if plays_cnt > 0:
-                epa_val = getattr(qb_row, "passing_epa", 0.0) or 0.0
-                cpoe_val = getattr(qb_row, "passing_cpoe", 0.0) or 0.0
-                if np.isnan(epa_val): epa_val = 0.0
-                if np.isnan(cpoe_val): cpoe_val = 0.0
-                for name_key in [p_name, p_display]:
-                    if name_key:
-                        hist = qb_history[name_key]
-                        hist["total_plays"] = int(hist["total_plays"] * 0.85 + plays_cnt)
-                        hist["total_epa"] = hist["total_epa"] * 0.85 + epa_val
-                        hist["total_cpoe_weighted"] = hist["total_cpoe_weighted"] * 0.85 + (cpoe_val * plays_cnt)
+        if not ps_clean.empty:
+            game_qb_stats = ps_clean[ps_clean["game_id"] == game.game_id]
+            for qb_row in game_qb_stats.itertuples():
+                p_name = getattr(qb_row, "player_name", "")
+                p_display = getattr(qb_row, "player_display_name", "")
+                plays_cnt = getattr(qb_row, "attempts", 0) or 0
+                if plays_cnt > 0:
+                    epa_val = getattr(qb_row, "passing_epa", 0.0) or 0.0
+                    cpoe_val = getattr(qb_row, "passing_cpoe", 0.0) or 0.0
+                    if np.isnan(epa_val): epa_val = 0.0
+                    if np.isnan(cpoe_val): cpoe_val = 0.0
+                    for name_key in [p_name, p_display, normalize_player_name(p_name), normalize_player_name(p_display)]:
+                        if name_key:
+                            hist = qb_history[name_key]
+                            hist["total_plays"] = int(hist["total_plays"] * 0.85 + plays_cnt)
+                            hist["total_epa"] = hist["total_epa"] * 0.85 + epa_val
+                            hist["total_cpoe_weighted"] = hist["total_cpoe_weighted"] * 0.85 + (cpoe_val * plays_cnt)
 
     res_df = pd.DataFrame(rows)
     for col in FEATURES:

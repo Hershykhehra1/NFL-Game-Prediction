@@ -4,24 +4,11 @@ import { getModelPerformance } from '../../services/api';
 
 /* ── Stat Tile ─────────────────────────────────────────────────────── */
 const StatTile = ({ label, value, color = 'var(--green)' }) => (
-  <div style={{
-    background: 'rgba(0,0,0,0.45)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 14,
-    padding: '18px 20px',
-    textAlign: 'center',
-  }}>
-    <div style={{
-      fontSize: 10,
-      fontWeight: 700,
-      letterSpacing: '0.8px',
-      textTransform: 'uppercase',
-      color: 'var(--text-3)',
-      marginBottom: 8,
-    }}>
+  <div className="analytics-stat-tile">
+    <div className="analytics-stat-tile-label">
       {label}
     </div>
-    <div className="font-mono-num" style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1 }}>
+    <div className="font-mono-num analytics-stat-tile-value" style={{ color }}>
       {value}
     </div>
   </div>
@@ -75,10 +62,10 @@ export const ModelAnalytics = () => {
   const { weights, summary, by_season, features } = data;
 
   return (
-    <div className="content-area" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="content-area analytics-container">
 
       {/* ── Hero Banner ──────────────────────────────── */}
-      <div className="glass-panel" style={{ padding: '32px 36px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32, alignItems: 'center' }}>
+      <div className="glass-panel analytics-hero-panel">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Award size={15} color="var(--green)" />
@@ -86,21 +73,16 @@ export const ModelAnalytics = () => {
               Walk-Forward Time Series Validation
             </span>
           </div>
-          <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-1)', marginBottom: 10, lineHeight: 1.2 }}>
+          <h2 className="analytics-hero-title">
             Leakage-Free Multi-Branch Model
           </h2>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.75, maxWidth: 540 }}>
+          <p className="analytics-hero-desc">
             Predictions are driven by a calibrated ensemble ingesting <strong>Play-by-Play drive efficiency</strong>, <strong>Starting QB rolling metrics</strong>, and <strong>Position-Weighted roster injuries</strong> across historical seasons with strict time-series splits.
           </p>
         </div>
 
         {/* Ensemble Weight Panel */}
-        <div style={{
-          background: 'rgba(0,0,0,0.55)',
-          border: '1px solid var(--border)',
-          borderRadius: 16,
-          padding: '22px 24px',
-        }}>
+        <div className="analytics-weights-panel">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
             <PieChart size={14} color="var(--green)" />
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-3)' }}>
@@ -113,7 +95,7 @@ export const ModelAnalytics = () => {
       </div>
 
       {/* ── 3-Branch Architecture Overview ─────────────── */}
-      <div className="glass-panel" style={{ padding: '24px 28px' }}>
+      <div className="glass-panel analytics-branches-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <GitBranch size={16} color="var(--teal-bright)" />
           <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text-2)' }}>
@@ -121,9 +103,9 @@ export const ModelAnalytics = () => {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+        <div className="analytics-branches-grid">
           {/* Branch 1 */}
-          <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(20,184,166,0.15)', borderRadius: 14, padding: '16px 18px' }}>
+          <div className="analytics-branch-item" style={{ border: '1px solid rgba(20,184,166,0.15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Zap size={15} color="var(--teal-bright)" />
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>1. Play-by-Play Data</span>
@@ -137,7 +119,7 @@ export const ModelAnalytics = () => {
           </div>
 
           {/* Branch 2 */}
-          <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 14, padding: '16px 18px' }}>
+          <div className="analytics-branch-item" style={{ border: '1px solid rgba(245,158,11,0.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Crosshair size={15} color="#f59e0b" />
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>2. Starting QB Stats</span>
@@ -151,7 +133,7 @@ export const ModelAnalytics = () => {
           </div>
 
           {/* Branch 3 */}
-          <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 14, padding: '16px 18px' }}>
+          <div className="analytics-branch-item" style={{ border: '1px solid rgba(239,68,68,0.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <HeartPulse size={15} color="#f87171" />
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>3. Position-Weighted Injuries</span>
@@ -167,9 +149,9 @@ export const ModelAnalytics = () => {
       </div>
 
       {/* ── Model Summary Cards ──────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+      <div className="analytics-summary-grid">
         {summary?.map((m) => (
-          <div key={m.model} className="glass-panel" style={{ padding: '24px 28px' }}>
+          <div key={m.model} className="glass-panel analytics-summary-card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
@@ -191,7 +173,7 @@ export const ModelAnalytics = () => {
               <span className="badge badge-high">{m.weight}% Weight</span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <div className="analytics-stat-tiles-grid">
               <StatTile label="Accuracy" value={`${m.accuracy}%`} color="var(--green)" />
               <StatTile label="Brier Score" value={m.brier_score} color="var(--teal-bright)" />
               <StatTile label="Log Loss" value={m.log_loss} color="var(--text-2)" />
@@ -201,8 +183,8 @@ export const ModelAnalytics = () => {
       </div>
 
       {/* ── Season-by-Season Table ───────────────────── */}
-      <div className="glass-panel" style={{ padding: '28px 32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+      <div className="glass-panel analytics-table-card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
             background: 'var(--green-dim)',
@@ -216,20 +198,12 @@ export const ModelAnalytics = () => {
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <div className="analytics-table-wrap">
+          <table className="analytics-table">
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(20,184,166,0.18)' }}>
                 {['Season', 'Model', 'Games', 'Accuracy', 'Brier Score', 'Log Loss'].map((h) => (
-                  <th key={h} style={{
-                    padding: '10px 16px',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: '0.8px',
-                    textTransform: 'uppercase',
-                    color: 'var(--text-3)',
-                    whiteSpace: 'nowrap',
-                  }}>
+                  <th key={h}>
                     {h}
                   </th>
                 ))}
@@ -243,22 +217,22 @@ export const ModelAnalytics = () => {
                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
-                  <td className="font-mono-num" style={{ padding: '13px 16px', fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>
+                  <td className="font-mono-num" style={{ fontWeight: 700, color: 'var(--text-1)' }}>
                     {row.season}
                   </td>
-                  <td style={{ padding: '13px 16px', fontSize: 12, color: 'var(--text-2)', textTransform: 'capitalize' }}>
+                  <td style={{ color: 'var(--text-2)', textTransform: 'capitalize' }}>
                     {row.model}
                   </td>
-                  <td className="font-mono-num" style={{ padding: '13px 16px', fontSize: 12, color: 'var(--text-3)' }}>
+                  <td className="font-mono-num" style={{ color: 'var(--text-3)' }}>
                     {row.games}
                   </td>
-                  <td className="font-mono-num" style={{ padding: '13px 16px', fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>
+                  <td className="font-mono-num" style={{ fontWeight: 700, color: 'var(--green)' }}>
                     {row.accuracy}%
                   </td>
-                  <td className="font-mono-num" style={{ padding: '13px 16px', fontSize: 12, color: 'var(--teal-bright)' }}>
+                  <td className="font-mono-num" style={{ color: 'var(--teal-bright)' }}>
                     {row.brier}
                   </td>
-                  <td className="font-mono-num" style={{ padding: '13px 16px', fontSize: 12, color: 'var(--text-2)' }}>
+                  <td className="font-mono-num" style={{ color: 'var(--text-2)' }}>
                     {row.log_loss}
                   </td>
                 </tr>

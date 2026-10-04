@@ -88,7 +88,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 50;
-  padding: 16px 0 12px;
+  background: #000000;
+  margin: 0 -24px;
+  padding: 14px 24px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.85);
 }
 
 .navbar-inner {
@@ -96,9 +100,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  background: rgba(5, 10, 14, 0.92);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: #090e14;
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 14px 20px;
@@ -247,11 +249,9 @@ body {
 .week-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(5, 10, 14, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  gap: 4px;
+  padding: 8px 12px;
+  background: #090e14;
   border: 1px solid var(--border);
   border-radius: 14px;
   margin-top: 10px;
@@ -263,20 +263,21 @@ body {
 .week-label {
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 1.2px;
+  letter-spacing: 1.1px;
   text-transform: uppercase;
   color: var(--teal-bright);
   white-space: nowrap;
-  padding-right: 14px;
+  padding-right: 10px;
   border-right: 1px solid rgba(20, 184, 166, 0.2);
-  margin-right: 4px;
+  margin-right: 2px;
   flex-shrink: 0;
 }
 
 .week-pill {
-  padding: 6px 14px;
+  flex: 1 1 auto;
+  padding: 5px 8px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-3);
   cursor: pointer;
@@ -284,7 +285,8 @@ body {
   background: transparent;
   transition: all 0.18s ease;
   white-space: nowrap;
-  flex-shrink: 0;
+  text-align: center;
+  min-width: 0;
 }
 
 .week-pill:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.05); }
@@ -975,7 +977,8 @@ body.modal-open {
 /* ─── Navbar Mobile ─────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .navbar {
-    padding: 10px 0 8px;
+    margin: 0 -12px;
+    padding: 10px 12px 10px;
   }
 
   .navbar-inner {
@@ -1171,9 +1174,7 @@ body.modal-open {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: rgba(5, 10, 14, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: #090e14;
   border: 1px solid var(--border);
   border-radius: 14px;
   margin-top: 8px;
@@ -1423,6 +1424,212 @@ body.modal-open {
     font-size: 11px;
     margin-top: 40px;
     padding-top: 16px;
+  }
+}
+
+/* ─── Model Analytics ─────────────────────────────────────────────── */
+.analytics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.analytics-hero-panel {
+  padding: 32px 36px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 32px;
+  align-items: center;
+}
+
+.analytics-hero-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-1);
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+
+.analytics-hero-desc {
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.75;
+  max-width: 540px;
+}
+
+.analytics-weights-panel {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+}
+
+.analytics-branches-card {
+  padding: 24px 28px;
+}
+
+.analytics-branches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.analytics-branch-item {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 14px;
+  padding: 16px 18px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.analytics-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.analytics-summary-card {
+  padding: 24px 28px;
+}
+
+.analytics-stat-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.analytics-stat-tile {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 18px 20px;
+  text-align: center;
+  min-width: 0;
+}
+
+.analytics-stat-tile-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-stat-tile-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.analytics-table-card {
+  padding: 28px 32px;
+}
+
+.analytics-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  min-width: 520px;
+}
+
+.analytics-table th {
+  padding: 10px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.analytics-table td {
+  padding: 13px 16px;
+}
+
+/* ─── Model Analytics Mobile ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  .analytics-hero-panel {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 20px 16px;
+  }
+
+  .analytics-hero-title {
+    font-size: 20px;
+  }
+
+  .analytics-hero-desc {
+    font-size: 12.5px;
+    line-height: 1.65;
+  }
+
+  .analytics-weights-panel {
+    padding: 16px 14px;
+  }
+
+  .analytics-branches-card {
+    padding: 18px 14px;
+  }
+
+  .analytics-branches-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .analytics-branch-item {
+    padding: 14px 14px;
+  }
+
+  .analytics-summary-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .analytics-summary-card {
+    padding: 18px 14px;
+  }
+
+  .analytics-stat-tiles-grid {
+    gap: 8px;
+  }
+
+  .analytics-stat-tile {
+    padding: 12px 6px;
+    border-radius: 10px;
+  }
+
+  .analytics-stat-tile-label {
+    font-size: 9px;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+  }
+
+  .analytics-stat-tile-value {
+    font-size: 20px;
+  }
+
+  .analytics-table-card {
+    padding: 18px 14px;
+  }
+
+  .analytics-table th {
+    padding: 8px 10px;
+    font-size: 9px;
+  }
+
+  .analytics-table td {
+    padding: 10px 10px;
+    font-size: 11.5px;
   }
 }
 
