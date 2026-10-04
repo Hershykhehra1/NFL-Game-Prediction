@@ -18,7 +18,7 @@ export const ModalTopBar = ({
 }) => {
   const tabs = [
     { id: 'analysis', label: 'Analysis', icon: BarChart3 },
-    { id: 'players', label: 'Player Stats', icon: Users, badge: is_completed ? 'Live' : 'Pregame' },
+    { id: 'players', label: 'Player Stats', icon: Users },
   ];
 
   return (
@@ -67,16 +67,8 @@ export const ModalTopBar = ({
         </div>
       </div>
 
-      {/* Sticky Tab Switcher */}
+      {/* Tab Switcher */}
       <div style={{
-        position: 'sticky',
-        top: isFullscreen ? 0 : -8,
-        zIndex: 15,
-        background: 'rgba(8,16,23,0.94)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        padding: '6px 0',
-        marginTop: -4,
         flexShrink: 0,
       }}>
         <div style={{
