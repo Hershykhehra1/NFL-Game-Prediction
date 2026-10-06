@@ -1,5 +1,6 @@
 """Leakage-free NFL weekly winner forecasting utilities and ML pipelines incorporating
-Play-by-Play metrics, Starting QB rolling stats, and Position-Weighted Roster Injuries.
+Play-by-Play metrics, Starting QB rolling stats, Position-Weighted Roster Injuries,
+and Dual-Track Statistical Power Rating + Elo system.
 """
 
 from collections import defaultdict
@@ -23,6 +24,9 @@ from app.pipeline.metadata import TEAM_METADATA, WEEKLY_SCHEDULE_TEMPLATE
 
 FEATURES = [
     "elo_diff",
+    "power_rating_diff",
+    "off_power_diff",
+    "def_power_diff",
     "win_pct_diff",
     "point_diff_diff",
     "recent_margin_diff",
@@ -46,7 +50,7 @@ TEAM_NORM = {
 
 import gc
 
-def load_inputs(start_season: int = 2022, predict_season: int = 2026):
+def load_inputs(start_season: int = 2025, predict_season: int = 2026):
     """Load schedules, PBP (streamed to game metrics), player stats, injuries, and depth charts via nflreadpy with low memory footprint."""
     seasons = list(range(start_season, predict_season + 1))
     dl = nfl.downloader.get_downloader()
@@ -455,6 +459,11 @@ def build_pregame_features(
         "games": 0, "wins": 0, "pf": 0.0, "pa": 0.0,
         "recent_margins": [], "net_epa": 0.0, "net_success": 0.0, "turnover": 0.0,
         "last_game": pd.NaT,
+        # ── Power Rating sub-components ──
+        "off_epa": 0.0, "def_epa": 0.0,
+        "off_success": 0.0, "def_success": 0.0,
+        "turnovers_committed": 0.0, "takeaways": 0.0,
+        "opponents_elo": [],  # list of opponent Elo at time of matchup for SOS
     })
     
     # Rolling QB history tracking (keyed by normalized name and display name)
@@ -477,11 +486,14 @@ def build_pregame_features(
                 for team in list(ratings):
                     ratings[team] = 1500 + 0.75 * (ratings[team] - 1500)
                 for team in list(state):
-                    for key in ("net_epa", "net_success", "turnover"):
+                    for key in ("net_epa", "net_success", "turnover",
+                                "off_epa", "def_epa", "off_success", "def_success",
+                                "turnovers_committed", "takeaways"):
                         state[team][key] *= 0.45
                     state[team].update({
                         "games": 0, "wins": 0, "pf": 0.0, "pa": 0.0,
-                        "recent_margins": [], "last_game": pd.NaT
+                        "recent_margins": [], "last_game": pd.NaT,
+                        "opponents_elo": [],
                     })
                 # Decay QB history between seasons slightly
                 for qb in list(qb_history):
@@ -494,6 +506,42 @@ def build_pregame_features(
         is_neutral = int(getattr(game, "location", "Home") == "Neutral")
         home_advantage = 0 if is_neutral else 55
         elo_diff = ratings[home] - ratings[away] + home_advantage
+
+        # ── Compute pre-game Statistical Power Ratings ──────────────
+        def _team_power(team):
+            """Calculate a team's statistical power rating from its rolling state."""
+            s = state[team]
+            g = s["games"]
+            # Bayesian blending weight: ramp from 0→1 over the first 6 games
+            beta = min(1.0, g / 6.0)
+
+            # Offensive efficiency: blend off EPA/play (60%) + off success rate (40%)
+            off_eff = 0.60 * s["off_epa"] + 0.40 * s["off_success"]
+            # Defensive efficiency: lower opponent EPA and success rate is better
+            def_eff = 0.60 * (-s["def_epa"]) + 0.40 * (1.0 - s["def_success"])
+            # Point differential per game (cap at ±24 to reduce blowout noise)
+            ppg_diff = max(-24.0, min(24.0, (s["pf"] - s["pa"]) / g)) if g else 0.0
+            # Turnover margin per game
+            to_margin = (s["takeaways"] - s["turnovers_committed"]) if g else 0.0
+            # Strength of schedule: average opponent Elo faced
+            sos = (np.mean(s["opponents_elo"]) - 1500) / 120.0 if s["opponents_elo"] else 0.0
+
+            # Weighted composite (raw space)
+            raw = (0.28 * off_eff + 0.22 * def_eff +
+                   0.20 * (ppg_diff / 24.0) +
+                   0.15 * to_margin +
+                   0.15 * sos)
+
+            # Blend with league-average prior (0.0) in early season
+            return beta * raw + (1.0 - beta) * 0.0, off_eff, def_eff
+
+        h_power_raw, h_off_eff, h_def_eff = _team_power(home)
+        a_power_raw, a_off_eff, a_def_eff = _team_power(away)
+
+        power_rating_diff = h_power_raw - a_power_raw
+        off_power_diff = h_off_eff - a_def_eff   # Home offense vs Away defense
+        def_power_diff = h_def_eff - a_off_eff   # Home defense vs Away offense
+
 
         home_rest = 0 if pd.isna(state[home]["last_game"]) else min((game.gameday - state[home]["last_game"]).days, 21) - 7
         away_rest = 0 if pd.isna(state[away]["last_game"]) else min((game.gameday - state[away]["last_game"]).days, 21) - 7
@@ -564,6 +612,9 @@ def build_pregame_features(
             "away_wins": int(a_wins), "away_losses": int(a_games - a_wins),
             # Base features
             "elo_diff": elo_diff,
+            "power_rating_diff": power_rating_diff,
+            "off_power_diff": off_power_diff,
+            "def_power_diff": def_power_diff,
             "win_pct_diff": (state[home]["wins"] / h_games if h_games else 0) - (state[away]["wins"] / a_games if a_games else 0),
             "point_diff_diff": ((state[home]["pf"] - state[home]["pa"]) / h_games if h_games else 0) - ((state[away]["pf"] - state[away]["pa"]) / a_games if a_games else 0),
             "recent_margin_diff": h_margin - a_margin,
@@ -577,6 +628,18 @@ def build_pregame_features(
             "injury_diff": injury_diff,
             "off_injury_diff": off_injury_diff,
             "def_injury_diff": def_injury_diff,
+            # Elo metadata
+            "home_elo": round(float(ratings[home]), 1),
+            "away_elo": round(float(ratings[away]), 1),
+            # Power rating metadata for API/display
+            "home_power_rating": round(float(h_power_raw * 100), 1),  # scaled for display
+            "away_power_rating": round(float(a_power_raw * 100), 1),
+            "home_off_eff": round(float(h_off_eff), 4),
+            "away_off_eff": round(float(a_off_eff), 4),
+            "home_def_eff": round(float(h_def_eff), 4),
+            "away_def_eff": round(float(a_def_eff), 4),
+            "home_sos": round(float((np.mean(state[home]["opponents_elo"]) - 1500) / 120.0) if state[home]["opponents_elo"] else 0.0, 3),
+            "away_sos": round(float((np.mean(state[away]["opponents_elo"]) - 1500) / 120.0) if state[away]["opponents_elo"] else 0.0, 3),
             # Metadata for API endpoints
             "home_qb": h_qb_name,
             "away_qb": a_qb_name,
@@ -610,11 +673,21 @@ def build_pregame_features(
             team_state["pa"] += allowed
             team_state["recent_margins"] = (team_state["recent_margins"] + [scored - allowed])[-5:]
             team_state["last_game"] = game.gameday
+            # Track opponent Elo for SOS calculation
+            opp = away if team == home else home
+            team_state["opponents_elo"].append(float(ratings[opp]))
             values = game_metrics.get((game.game_id, team))
             if values:
                 team_state["net_epa"] = 0.72 * team_state["net_epa"] + 0.28 * (values["off_epa"] - values["def_epa"])
                 team_state["net_success"] = 0.72 * team_state["net_success"] + 0.28 * (values["off_success"] - values["def_success"])
                 team_state["turnover"] = 0.72 * team_state["turnover"] + 0.28 * (values["off_turnover"] - values["def_takeaway"])
+                # Update power rating sub-components
+                team_state["off_epa"] = 0.72 * team_state["off_epa"] + 0.28 * values["off_epa"]
+                team_state["def_epa"] = 0.72 * team_state["def_epa"] + 0.28 * values["def_epa"]
+                team_state["off_success"] = 0.72 * team_state["off_success"] + 0.28 * values["off_success"]
+                team_state["def_success"] = 0.72 * team_state["def_success"] + 0.28 * values["def_success"]
+                team_state["turnovers_committed"] = 0.72 * team_state["turnovers_committed"] + 0.28 * values["off_turnover"]
+                team_state["takeaways"] = 0.72 * team_state["takeaways"] + 0.28 * values["def_takeaway"]
 
         # Update QB rolling stats from player stats for completed game
         if not ps_clean.empty:
@@ -789,6 +862,16 @@ def generate_fallback_model_data():
             off_injury_diff = round(injury_diff * 0.6, 1)
             def_injury_diff = round(injury_diff * 0.4, 1)
 
+            # Synthetic Power Rating metrics derived from Elo gap
+            power_base = (h_elo - a_elo) / 600.0 + random.uniform(-0.05, 0.05)
+            h_off_eff = round(net_epa_diff / 2.0 + random.uniform(-0.02, 0.02), 4)
+            a_off_eff = round(-net_epa_diff / 2.0 + random.uniform(-0.02, 0.02), 4)
+            h_def_eff = round(random.uniform(-0.02, 0.02), 4)
+            a_def_eff = round(random.uniform(-0.02, 0.02), 4)
+            power_rating_diff = round(power_base, 4)
+            off_power_diff_val = round(h_off_eff - a_def_eff, 4)
+            def_power_diff_val = round(h_def_eff - a_off_eff, 4)
+
             rows.append({
                 "game_id": f"2026_{week_num:02d}_{away}_{home}",
                 "season": 2026,
@@ -804,6 +887,9 @@ def generate_fallback_model_data():
                 "away_wins": a_wins,
                 "away_losses": a_losses,
                 "elo_diff": elo_diff,
+                "power_rating_diff": power_rating_diff,
+                "off_power_diff": off_power_diff_val,
+                "def_power_diff": def_power_diff_val,
                 "win_pct_diff": round((h_elo - a_elo) / 800.0, 2),
                 "point_diff_diff": recent_margin_diff,
                 "recent_margin_diff": recent_margin_diff,
@@ -817,6 +903,15 @@ def generate_fallback_model_data():
                 "injury_diff": injury_diff,
                 "off_injury_diff": off_injury_diff,
                 "def_injury_diff": def_injury_diff,
+                # Power rating metadata for API/display
+                "home_power_rating": round(power_base * 50 + 50, 1),
+                "away_power_rating": round(-power_base * 50 + 50, 1),
+                "home_off_eff": h_off_eff,
+                "away_off_eff": a_off_eff,
+                "home_def_eff": h_def_eff,
+                "away_def_eff": a_def_eff,
+                "home_sos": round((h_elo - 1500) / 120.0, 3),
+                "away_sos": round((a_elo - 1500) / 120.0, 3),
                 "home_qb": h_qb,
                 "away_qb": a_qb,
                 "home_qb_epa": round(max(0.0, qb_epa_diff / 2 + 0.12), 3),
