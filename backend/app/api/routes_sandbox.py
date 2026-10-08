@@ -16,6 +16,9 @@ class CustomPredictionRequest(BaseModel):
     home_team: str
     away_team: str
     elo_diff: float = 0.0
+    power_rating_diff: float = 0.0
+    off_power_diff: float = 0.0
+    def_power_diff: float = 0.0
     win_pct_diff: float = 0.0
     point_diff_diff: float = 0.0
     recent_margin_diff: float = 0.0
@@ -40,6 +43,9 @@ def predict_custom(req: CustomPredictionRequest):
     features = predictor.FEATURES
     row_dict = {
         "elo_diff": req.elo_diff,
+        "power_rating_diff": req.power_rating_diff,
+        "off_power_diff": req.off_power_diff,
+        "def_power_diff": req.def_power_diff,
         "win_pct_diff": req.win_pct_diff,
         "point_diff_diff": req.point_diff_diff,
         "recent_margin_diff": req.recent_margin_diff,
@@ -60,7 +66,13 @@ def predict_custom(req: CustomPredictionRequest):
     weights = CACHE.weights
 
     if CACHE.is_fallback:
-        h_prob = 1.0 / (1.0 + math.exp(-(req.elo_diff / 180.0 + req.net_epa_diff * 3.5 + req.qb_epa_diff * 2.0 + req.injury_diff * 0.15)))
+        h_prob = 1.0 / (1.0 + math.exp(-(
+            req.elo_diff / 220.0 +
+            req.power_rating_diff * 1.8 +
+            req.net_epa_diff * 2.5 +
+            req.qb_epa_diff * 1.8 +
+            req.injury_diff * 0.12
+        )))
         h_prob = min(max(h_prob, 0.05), 0.95)
         log_prob = h_prob
         boost_prob = h_prob
