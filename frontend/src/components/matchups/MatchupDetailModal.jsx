@@ -81,6 +81,24 @@ export const MatchupDetailModal = ({ game, onClose }) => {
       desc: 'Includes 55 Elo home field advantage',
     },
     {
+      label: 'Statistical Power Diff',
+      value: differentials.power_rating_diff !== undefined
+        ? (differentials.power_rating_diff > 0 ? `+${differentials.power_rating_diff}` : differentials.power_rating_diff)
+        : '+0.00',
+      favors: (differentials.power_rating_diff || 0) > 0 ? home_team.abbr : away_team.abbr,
+      icon: Zap,
+      desc: 'Fundamental EPA, success rate & SOS composite differential',
+    },
+    {
+      label: 'Offense vs Defense Matchup',
+      value: differentials.off_power_diff !== undefined
+        ? (differentials.off_power_diff > 0 ? `+${differentials.off_power_diff}` : differentials.off_power_diff)
+        : '+0.00',
+      favors: (differentials.off_power_diff || 0) > 0 ? home_team.abbr : away_team.abbr,
+      icon: Scale,
+      desc: 'Home offensive efficiency vs Away defensive resistance',
+    },
+    {
       label: 'Starting QB EPA / Play',
       value: differentials.qb_epa_diff !== undefined
         ? (differentials.qb_epa_diff > 0 ? `+${differentials.qb_epa_diff}` : differentials.qb_epa_diff)
