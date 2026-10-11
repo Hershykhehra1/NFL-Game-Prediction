@@ -9,11 +9,21 @@ import {
 
 /* ── Metric Information Dictionary ───────────────────────────────────── */
 const METRIC_INFO = {
+  power_rating: {
+    id: 'power_rating',
+    title: 'Statistical Power Rating Differential',
+    tag: 'Fundamental Power',
+    color: 'var(--green)',
+    meaning: 'Differential in multi-category fundamental team efficiency (combining offensive EPA, defensive EPA, scoring margin, turnover margin, and strength of schedule).',
+    impact: 'Serves as Track 1 in our dual-track forecasting architecture, isolating on-field execution per snap independently of Elo historical momentum.',
+    benchmark: '0.00 = Equal efficiency | ±0.08 = Moderate efficiency edge | ±0.20 = Complete mismatch',
+    direction: 'Positive (+) favors Home fundamental efficiency • Negative (−) favors Away efficiency',
+  },
   elo: {
     id: 'elo',
     title: 'Elo Rating Differential',
     tag: 'Overall Caliber',
-    color: 'var(--green)',
+    color: 'var(--teal-bright)',
     meaning: 'Elo is an adaptive power rating reflecting total team caliber and historical strength of schedule. An average NFL team is ~1500 Elo; top contenders reach 1650–1750, while rebuilding teams drop to 1350–1400.',
     impact: 'One of the highest weighted base features. A +100 Elo differential gives the favored team a ~65–70% baseline win probability advantage.',
     benchmark: '0 = Equal teams | ±50 = Moderate edge | ±150 = Massive mismatch',
@@ -293,6 +303,7 @@ export const MatchupSandbox = () => {
   
   // Model feature differentials
   const [eloDiff, setEloDiff]             = useState(55);
+  const [powerRatingDiff, setPowerRatingDiff] = useState(0.08);
   const [qbEpaDiff, setQbEpaDiff]         = useState(0.06);
   const [qbCpoeDiff, setQbCpoeDiff]       = useState(1.5);
   const [injuryDiff, setInjuryDiff]       = useState(1.2);
@@ -318,6 +329,9 @@ export const MatchupSandbox = () => {
       home_team: homeTeam,
       away_team: awayTeam,
       elo_diff: eloDiff,
+      power_rating_diff: powerRatingDiff,
+      off_power_diff: powerRatingDiff * 0.7,
+      def_power_diff: powerRatingDiff * 0.3,
       win_pct_diff: 0.1,
       point_diff_diff: recentMarginDiff,
       recent_margin_diff: recentMarginDiff,
@@ -338,7 +352,7 @@ export const MatchupSandbox = () => {
 
   useEffect(() => {
     handleSimulate();
-  }, [homeTeam, awayTeam, eloDiff, qbEpaDiff, qbCpoeDiff, injuryDiff, netEpaDiff, netSuccessDiff, recentMarginDiff, turnoverRateDiff, restDiff, isNeutral]);
+  }, [homeTeam, awayTeam, eloDiff, powerRatingDiff, qbEpaDiff, qbCpoeDiff, injuryDiff, netEpaDiff, netSuccessDiff, recentMarginDiff, turnoverRateDiff, restDiff, isNeutral]);
 
   const sign = (v) => (v > 0 ? `+${v}` : `${v}`);
 
@@ -350,6 +364,7 @@ export const MatchupSandbox = () => {
   const applyPreset = (preset) => {
     if (preset === 'even') {
       setEloDiff(0);
+      setPowerRatingDiff(0.0);
       setQbEpaDiff(0.0);
       setQbCpoeDiff(0.0);
       setInjuryDiff(0.0);
@@ -361,6 +376,7 @@ export const MatchupSandbox = () => {
       setIsNeutral(false);
     } else if (preset === 'home_power') {
       setEloDiff(120);
+      setPowerRatingDiff(0.22);
       setQbEpaDiff(0.18);
       setQbCpoeDiff(4.2);
       setInjuryDiff(3.5);
@@ -372,6 +388,7 @@ export const MatchupSandbox = () => {
       setIsNeutral(false);
     } else if (preset === 'away_upset') {
       setEloDiff(-95);
+      setPowerRatingDiff(-0.18);
       setQbEpaDiff(-0.16);
       setQbCpoeDiff(-3.8);
       setInjuryDiff(-3.0);
@@ -732,12 +749,23 @@ export const MatchupSandbox = () => {
             </div>
 
             <SliderRow
+              metricKey="power_rating"
+              label="Statistical Power Rating Diff"
+              value={powerRatingDiff} min={-0.40} max={0.40} step={0.01}
+              displayValue={sign(powerRatingDiff)}
+              onChange={setPowerRatingDiff}
+              color="var(--green)"
+              activeInfoKey={activeInfoKey}
+              onToggleInfo={handleToggleInfo}
+            />
+
+            <SliderRow
               metricKey="elo"
               label="Elo Rating Differential"
               value={eloDiff} min={-250} max={250} step={5}
               displayValue={`${sign(eloDiff)} Elo`}
               onChange={setEloDiff}
-              color="var(--green)"
+              color="var(--teal-bright)"
               activeInfoKey={activeInfoKey}
               onToggleInfo={handleToggleInfo}
             />

@@ -13,7 +13,7 @@ from app.pipeline.metadata import TEAM_METADATA
 router = APIRouter()
 
 
-def load_model_pipeline(start_season=2022, predict_season=2026):
+def load_model_pipeline(start_season=2025, predict_season=2026):
     """Load schedules, PBP, player stats, injuries, and depth charts, compute features and fit models."""
     try:
         CACHE.is_loading = True
@@ -35,7 +35,7 @@ def load_model_pipeline(start_season=2022, predict_season=2026):
         completed["home_win"] = completed["home_win"].astype(int)
 
         print("Evaluating walk-forward model scores...")
-        scores = predictor.walk_forward_scores(completed, validation_seasons=3)
+        scores = predictor.walk_forward_scores(completed, validation_seasons=2)
         print("Fitting final forecaster ensemble...")
         models, weights = predictor.fit_forecaster(completed, scores)
 
@@ -94,7 +94,7 @@ def refresh_pipeline():
     if CACHE.is_loading:
         return {"status": "in_progress", "message": "Pipeline is currently updating."}
     CACHE.is_loading = True
-    thread = threading.Thread(target=load_model_pipeline, args=(2022, 2026))
+    thread = threading.Thread(target=load_model_pipeline, args=(2025, 2026))
     thread.start()
     return {"status": "started", "message": "Re-fetching latest live NFL game data and updating models."}
 
@@ -148,10 +148,12 @@ def get_predictions(season: int = None, week: int = 1):
 
         if CACHE.is_fallback:
             elo_d = getattr(row, "elo_diff", 0.0)
+            pwr_d = getattr(row, "power_rating_diff", 0.0)
             epa_d = getattr(row, "net_epa_diff", 0.0)
             qb_epa_d = getattr(row, "qb_epa_diff", 0.0)
-            h_prob = 1.0 / (1.0 + math.exp(-(elo_d / 180.0 + epa_d * 3.5 + qb_epa_d * 2.0)))
-            h_prob = min(max(h_prob, 0.10), 0.92)
+            inj_d = getattr(row, "injury_diff", 0.0)
+            h_prob = 1.0 / (1.0 + math.exp(-(elo_d / 220.0 + pwr_d * 1.8 + epa_d * 2.5 + qb_epa_d * 1.8 + inj_d * 0.12)))
+            h_prob = min(max(h_prob, 0.08), 0.92)
             a_prob = 1.0 - h_prob
             prob_logistic = h_prob
             prob_boosted = h_prob
@@ -226,6 +228,9 @@ def get_predictions(season: int = None, week: int = 1):
             "is_correct": (pred_winner == actual_winner) if is_completed and actual_winner != "TIE" else None,
             "differentials": {
                 "elo_diff": round(float(getattr(row, "elo_diff", 0.0)), 1),
+                "power_rating_diff": round(float(getattr(row, "power_rating_diff", 0.0)), 3),
+                "off_power_diff": round(float(getattr(row, "off_power_diff", 0.0)), 3),
+                "def_power_diff": round(float(getattr(row, "def_power_diff", 0.0)), 3),
                 "win_pct_diff": round(float(getattr(row, "win_pct_diff", 0.0) * 100), 1),
                 "point_diff_diff": round(float(getattr(row, "point_diff_diff", 0.0)), 1),
                 "recent_margin_diff": round(float(getattr(row, "recent_margin_diff", 0.0)), 1),
@@ -239,6 +244,16 @@ def get_predictions(season: int = None, week: int = 1):
                 "injury_diff": round(float(getattr(row, "injury_diff", 0.0)), 1),
                 "off_injury_diff": round(float(getattr(row, "off_injury_diff", 0.0)), 1),
                 "def_injury_diff": round(float(getattr(row, "def_injury_diff", 0.0)), 1),
+            },
+            "power_ratings": {
+                "home_power": round(float(getattr(row, "home_power_rating", 50.0)), 1),
+                "away_power": round(float(getattr(row, "away_power_rating", 50.0)), 1),
+                "home_off_eff": round(float(getattr(row, "home_off_eff", 0.0)), 4),
+                "away_off_eff": round(float(getattr(row, "away_off_eff", 0.0)), 4),
+                "home_def_eff": round(float(getattr(row, "home_def_eff", 0.0)), 4),
+                "away_def_eff": round(float(getattr(row, "away_def_eff", 0.0)), 4),
+                "home_sos": round(float(getattr(row, "home_sos", 0.0)), 3),
+                "away_sos": round(float(getattr(row, "away_sos", 0.0)), 3),
             },
             "starting_qbs": {
                 "home_qb": getattr(row, "home_qb", home_meta.get("qb", "Starting QB")),
