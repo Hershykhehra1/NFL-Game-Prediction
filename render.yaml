@@ -10,3 +10,7 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: SUPABASE_URL
+        value: https://aiesymlaxxpqatflouje.supabase.co
+      - key: SUPABASE_KEY
+        sync: false
