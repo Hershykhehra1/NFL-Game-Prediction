@@ -1,0 +1,57 @@
+name: NFL Data Sync (nflreadpy → Supabase)
+
+on:
+  schedule:
+    # 1. Thursday 10:00 PM PST (Friday 06:00 UTC) — After Thursday Night Football
+    - cron: '0 6 * * 5'
+    # 2. Friday 4:00 PM PST (Saturday 00:00 UTC) — Final Week Injury Designations
+    - cron: '0 0 * * 6'
+    # 3. Sunday 1:45 PM PST (Sunday 21:45 UTC) — After Early Slate Games Finish
+    - cron: '45 21 * * 0'
+    # 4. Sunday 5:00 PM PST (Monday 01:00 UTC) — After Afternoon Slate Games Finish
+    - cron: '0 1 * * 1'
+    # 5. Sunday 10:00 PM PST (Monday 06:00 UTC) — After Sunday Night Football
+    - cron: '0 6 * * 1'
+    # 6. Monday 10:00 PM PST (Tuesday 06:00 UTC) — After Monday Night Football
+    - cron: '0 6 * * 2'
+
+  # Allows manual triggering anytime from GitHub web UI ("Actions" tab -> "Run workflow")
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Ingest NFL Data to Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Ingestion Pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://aiesymlaxxpqatflouje.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpZXN5bWxheHhwcWF0ZmxvdWplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3NDU5NTcsImV4cCI6MjEwNzMyMTk1N30.vVdpofYbMv4_ExgBxdXtwqTUQQEcj8SRihOBiOGjXGI' }}
+          INGEST_START_SEASON: 2025
+          INGEST_PREDICT_SEASON: 2026
+        run: |
+          python backend/scripts/ingest_to_supabase.py
+
+      - name: Notify Render Web Service (Cache Refresh)
+        if: env.RENDER_APP_URL != ''
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+        run: |
+          echo "Pinging Render /api/refresh to update active in-memory cache..."
+          curl -s -X POST "${RENDER_APP_URL}/api/refresh" || true
