@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.config import CACHE
+from app.db import repositories
 from app.pipeline import predictor
 from app.pipeline.metadata import TEAM_METADATA
 
@@ -14,19 +15,16 @@ router = APIRouter()
 
 
 def load_model_pipeline(start_season=2025, predict_season=2026):
-    """Load schedules, PBP, player stats, injuries, and depth charts, compute features and fit models."""
+    """Load precomputed games and model evaluations from Supabase, fit forecaster, and populate cache."""
     try:
         CACHE.is_loading = True
         CACHE.error = None
-        print(f"Loading NFL data from {start_season} to {predict_season}...")
-        schedule, pbp, player_stats, injuries, depth_charts = predictor.load_inputs(start_season, predict_season)
-        
-        print("Computing play-by-play game metrics...")
-        game_metrics = predictor.make_game_metrics(pbp)
-        
-        print("Building pregame features, starting QB metrics & position-weighted injuries...")
-        model_data = predictor.build_pregame_features(schedule, game_metrics, player_stats, injuries, depth_charts)
-        
+        print("Loading precomputed game features from Supabase...")
+        model_data = repositories.get_all_games()
+
+        if model_data.empty:
+            raise RuntimeError("No games found in Supabase database.")
+
         model_data["home_win"] = (
             (model_data["home_score"] > model_data["away_score"]).astype(float)
             .where(model_data["home_score"].notna() & model_data["away_score"].notna() & (model_data["home_score"] != model_data["away_score"]))
@@ -34,10 +32,16 @@ def load_model_pipeline(start_season=2025, predict_season=2026):
         completed = model_data.dropna(subset=["home_win"]).copy()
         completed["home_win"] = completed["home_win"].astype(int)
 
-        print("Evaluating walk-forward model scores...")
-        scores = predictor.walk_forward_scores(completed, validation_seasons=2)
-        print("Fitting final forecaster ensemble...")
-        models, weights = predictor.fit_forecaster(completed, scores)
+        scores = repositories.get_model_scores()
+        if scores.empty:
+            print("No stored model evaluations; computing walk-forward scores...")
+            scores = predictor.walk_forward_scores(completed, validation_seasons=2)
+
+        weights = repositories.get_model_weights()
+        print("Fitting final forecaster ensemble on completed games...")
+        models, calculated_weights = predictor.fit_forecaster(completed, scores)
+        if not weights or len(weights) < 2:
+            weights = calculated_weights
 
         if not model_data.empty and "season" in model_data.columns:
             CACHE.latest_season = int(model_data["season"].max())
@@ -47,16 +51,16 @@ def load_model_pipeline(start_season=2025, predict_season=2026):
         CACHE.models = models
         CACHE.weights = weights
         CACHE.scores = scores
-        CACHE.player_stats = player_stats  # Cache full player stats for box score endpoint
+        CACHE.player_stats = None  # Box scores queried on-demand from Supabase
         CACHE.last_updated = datetime.now().strftime("%b %d, %I:%M:%S %p")
         CACHE.is_loaded = True
         CACHE.is_loading = False
         CACHE.is_fallback = False
-        print(f"NFL Prediction pipeline successfully loaded via live nflreadpy! Latest season: {CACHE.latest_season}")
+        print(f"✅ Prediction pipeline loaded from Supabase! Total games: {len(model_data)}, Completed: {len(completed)}, Season: {CACHE.latest_season}")
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"nflreadpy network load error: {e}. Switching to offline fallback dataset.")
+        print(f"Supabase load error: {e}. Switching to offline fallback dataset.")
         model_data, completed, models, weights, scores, fallback_player_stats = predictor.generate_fallback_model_data()
         if not model_data.empty and "season" in model_data.columns:
             CACHE.latest_season = int(model_data["season"].max())
@@ -195,7 +199,7 @@ def get_predictions(season: int = None, week: int = 1):
             "season": int(row.season),
             "week": int(row.week),
             "gameday": row.gameday.strftime("%Y-%m-%d") if isinstance(row.gameday, (pd.Timestamp, datetime)) else str(row.gameday),
-            "matchup": str(row.matchup),
+            "matchup": getattr(row, "matchup", f"{row.away_team} @ {row.home_team}"),
             "home_team": {
                 "abbr": row.home_team,
                 "name": home_meta["name"],
@@ -279,7 +283,7 @@ def get_predictions(season: int = None, week: int = 1):
         output_games.append(game_dict)
 
     return {
-        "season": season,
+        "season": selected_season,
         "week": week,
         "total_games": len(output_games),
         "last_updated": CACHE.last_updated,
@@ -355,9 +359,22 @@ def get_boxscore(game_id: str):
             "away": None,
         }
 
-    ps = CACHE.player_stats
+    # Fetch player stats from Supabase on demand (fast indexed query < 25ms)
+    game_ps = pd.DataFrame()
+    if not CACHE.is_fallback:
+        try:
+            game_ps = repositories.get_boxscore_players(game_id)
+        except Exception as e:
+            print(f"Error querying Supabase for box score '{game_id}': {e}")
+            game_ps = pd.DataFrame()
 
-    if ps is None or (hasattr(ps, 'empty') and ps.empty):
+    # Fallback to in-memory player_stats if Supabase returned nothing or running in offline fallback mode
+    if game_ps.empty and CACHE.player_stats is not None:
+        ps = CACHE.player_stats
+        if isinstance(ps, pd.DataFrame):
+            game_ps = ps[ps["game_id"].astype(str) == str(game_id)].copy()
+
+    if game_ps.empty:
         return {
             "game_id": game_id,
             "is_completed": True,
@@ -366,12 +383,6 @@ def get_boxscore(game_id: str):
             "home": _build_empty_boxscore(),
             "away": _build_empty_boxscore(),
         }
-
-    # Filter player stats for this game
-    if isinstance(ps, pd.DataFrame):
-        game_ps = ps[ps["game_id"].astype(str) == str(game_id)].copy()
-    else:
-        game_ps = ps
 
     home_ps = game_ps[game_ps["team"].isin([home_team])] if not game_ps.empty else pd.DataFrame()
     away_ps = game_ps[game_ps["team"].isin([away_team])] if not game_ps.empty else pd.DataFrame()
