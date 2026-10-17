@@ -39,13 +39,9 @@ export const getTeams = () => apiFetch('/api/teams');
 /** Fetch per-player box score for a completed game */
 export const getBoxscore = (gameId) => apiFetch(`/api/boxscore/${encodeURIComponent(gameId)}`);
 
-/** Submit a custom sandbox prediction */
-export const predictCustom = (payload) =>
-  apiFetch('/api/predict-custom', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+/** Fetch NFL team standings and leaderboard */
+export const getStandings = (season) =>
+  apiFetch(`/api/standings${season ? `?season=${season}` : ''}`);
 
 export { API_URL };
 
