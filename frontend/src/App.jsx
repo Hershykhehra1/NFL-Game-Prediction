@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/layout/Header';
 import { MatchupGrid } from './components/matchups/MatchupGrid';
 import { ModelAnalytics } from './components/analytics/ModelAnalytics';
-import { MatchupSandbox } from './components/sandbox/MatchupSandbox';
+import { StandingsLeaderboard } from './components/leaderboard/StandingsLeaderboard';
 import { TeamLeaderboard } from './components/analytics/TeamLeaderboard';
 import { AlertCircle, RefreshCw, Cpu } from 'lucide-react';
 import { getStatus, getWeeks, getPredictions, triggerRefresh } from './services/api';
@@ -187,7 +187,7 @@ export function App() {
         <main>
           {activeTab === 'matchups'  && <MatchupGrid games={games} isLoading={isLoading} />}
           {activeTab === 'analytics' && <ModelAnalytics />}
-          {activeTab === 'sandbox'   && <MatchupSandbox />}
+          {activeTab === 'leaderboard' && <StandingsLeaderboard />}
           {activeTab === 'teams'     && <TeamLeaderboard />}
         </main>
       )}

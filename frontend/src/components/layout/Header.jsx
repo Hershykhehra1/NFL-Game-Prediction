@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, BarChart3, Sliders, Trophy, Calendar, RefreshCw, Clock, Menu, X, ChevronDown } from 'lucide-react';
+import { Shield, BarChart3, Trophy, TrendingUp, Calendar, RefreshCw, Clock, Menu, X, ChevronDown } from 'lucide-react';
 
 const TABS = [
-  { id: 'matchups',  label: 'Matchups',       Icon: Shield    },
-  { id: 'analytics', label: 'Model Metrics',  Icon: BarChart3 },
-  { id: 'sandbox',   label: 'Sandbox',        Icon: Sliders   },
-  { id: 'teams',     label: 'Power Rankings', Icon: Trophy    },
+  { id: 'matchups',    label: 'Matchups',       Icon: Shield     },
+  { id: 'leaderboard', label: 'Leaderboard',    Icon: Trophy     },
+  { id: 'teams',       label: 'Power Rankings', Icon: TrendingUp },
+  { id: 'analytics',   label: 'Model Metrics',  Icon: BarChart3  },
 ];
 
 export const Header = ({
