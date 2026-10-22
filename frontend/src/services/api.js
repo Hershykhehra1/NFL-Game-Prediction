@@ -43,5 +43,15 @@ export const getBoxscore = (gameId) => apiFetch(`/api/boxscore/${encodeURICompon
 export const getStandings = (season) =>
   apiFetch(`/api/standings${season ? `?season=${season}` : ''}`);
 
+/** Fetch NFL individual player statistical leaders with optional search query */
+export const getPlayerLeaders = (season, limit = 10, search = '') => {
+  const params = new URLSearchParams();
+  if (season) params.set('season', season);
+  if (limit) params.set('limit', limit);
+  if (search && search.trim()) params.set('search', search.trim());
+  return apiFetch(`/api/player-leaders?${params.toString()}`);
+};
+
 export { API_URL };
+
 

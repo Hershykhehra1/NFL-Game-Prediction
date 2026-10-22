@@ -331,6 +331,8 @@ def get_standings(season: Optional[int] = Query(None, description="NFL regular s
     for rank, team in enumerate(teams_data, 1):
         team["league_rank"] = rank
 
+    player_leaders = repositories.get_player_leaders(target_season, limit=10)
+
     return {
         "season": target_season,
         "available_seasons": available_seasons,
@@ -339,4 +341,19 @@ def get_standings(season: Optional[int] = Query(None, description="NFL regular s
         "standings": teams_data,
         "conferences": conferences_dict,
         "divisions": divisions_dict,
+        "player_leaders": player_leaders,
     }
+
+
+@router.get("/player-leaders")
+def get_player_leaders(
+    season: Optional[int] = Query(None, description="NFL regular season year"),
+    limit: int = Query(10, ge=1, le=50, description="Max players per category"),
+    search: Optional[str] = Query(None, description="Search player name or team across all NFL players"),
+):
+    """Return NFL statistical leaders for receiving yards, passing yards, and tackles with search support."""
+    target_season = season if season is not None else (CACHE.latest_season or 2026)
+    leaders = repositories.get_player_leaders(target_season, limit=limit, search=search)
+    return leaders
+
+
