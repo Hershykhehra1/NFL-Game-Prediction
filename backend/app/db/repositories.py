@@ -124,10 +124,11 @@ def get_boxscore_players(game_id: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 _PLAYER_LEADERS_CACHE = {}
+_SEASON_RUSHING_SACKS_CACHE = {}
 
 
 def _generate_fallback_player_leaders(season: int, limit: int = 10, search: Optional[str] = None) -> dict:
-    """Generate realistic fallback player statistics for receiving, passing, and tackles with search support."""
+    """Generate realistic fallback player statistics for passing, rushing, receiving, tackles, and sacks with search support."""
     receiving = [
         {"rank": 1, "player_id": "rec-1", "name": "Jaxon Smith-Njigba", "team": "SEA", "position": "WR", "receiving_yards": 1793, "receptions": 119, "touchdowns": 10, "targets": 163, "avg_ypr": 15.1},
         {"rank": 2, "player_id": "rec-2", "name": "Puka Nacua", "team": "LA", "position": "WR", "receiving_yards": 1715, "receptions": 129, "touchdowns": 10, "targets": 166, "avg_ypr": 13.3},
@@ -157,6 +158,21 @@ def _generate_fallback_player_leaders(season: int, limit: int = 10, search: Opti
         {"rank": 12, "player_id": "pass-12", "name": "Brock Purdy", "team": "SF", "position": "QB", "passing_yards": 1460, "completions": 119, "attempts": 171, "completion_percentage": 69.6, "touchdowns": 14, "interceptions": 2, "qb_rating": 118.1},
     ]
 
+    rushing = [
+        {"rank": 1, "player_id": "rush-1", "name": "Kenneth Walker III", "team": "KC", "position": "RB", "rushing_yards": 665, "carries": 106, "touchdowns": 6, "avg_ypc": 6.3},
+        {"rank": 2, "player_id": "rush-2", "name": "Bijan Robinson", "team": "ATL", "position": "RB", "rushing_yards": 641, "carries": 111, "touchdowns": 4, "avg_ypc": 5.8},
+        {"rank": 3, "player_id": "rush-3", "name": "James Cook", "team": "BUF", "position": "RB", "rushing_yards": 627, "carries": 117, "touchdowns": 6, "avg_ypc": 5.4},
+        {"rank": 4, "player_id": "rush-4", "name": "Derrick Henry", "team": "BAL", "position": "RB", "rushing_yards": 534, "carries": 130, "touchdowns": 7, "avg_ypc": 4.1},
+        {"rank": 5, "player_id": "rush-5", "name": "Jahmyr Gibbs", "team": "DET", "position": "RB", "rushing_yards": 504, "carries": 105, "touchdowns": 7, "avg_ypc": 4.8},
+        {"rank": 6, "player_id": "rush-6", "name": "Saquon Barkley", "team": "PHI", "position": "RB", "rushing_yards": 482, "carries": 102, "touchdowns": 5, "avg_ypc": 4.7},
+        {"rank": 7, "player_id": "rush-7", "name": "Kyren Williams", "team": "LA", "position": "RB", "rushing_yards": 465, "carries": 109, "touchdowns": 6, "avg_ypc": 4.3},
+        {"rank": 8, "player_id": "rush-8", "name": "Josh Jacobs", "team": "GB", "position": "RB", "rushing_yards": 455, "carries": 98, "touchdowns": 4, "avg_ypc": 4.6},
+        {"rank": 9, "player_id": "rush-9", "name": "Jonathan Taylor", "team": "IND", "position": "RB", "rushing_yards": 441, "carries": 95, "touchdowns": 5, "avg_ypc": 4.6},
+        {"rank": 10, "player_id": "rush-10", "name": "Chuba Hubbard", "team": "CAR", "position": "RB", "rushing_yards": 420, "carries": 91, "touchdowns": 3, "avg_ypc": 4.6},
+        {"rank": 20, "player_id": "rush-20", "name": "Christian McCaffrey", "team": "SF", "position": "RB", "rushing_yards": 380, "carries": 78, "touchdowns": 4, "avg_ypc": 4.9},
+        {"rank": 46, "player_id": "rush-46", "name": "Brock Purdy", "team": "SF", "position": "QB", "rushing_yards": 156, "carries": 30, "touchdowns": 1, "avg_ypc": 5.2},
+    ]
+
     tackles = [
         {"rank": 1, "player_id": "tkl-1", "name": "Jordyn Brooks", "team": "MIA", "position": "LB", "tackles": 180, "solo_tackles": 96, "assist_tackles": 84},
         {"rank": 2, "player_id": "tkl-2", "name": "Jack Campbell", "team": "DET", "position": "LB", "tackles": 174, "solo_tackles": 87, "assist_tackles": 87},
@@ -171,33 +187,128 @@ def _generate_fallback_player_leaders(season: int, limit: int = 10, search: Opti
         {"rank": 15, "player_id": "tkl-15", "name": "Fred Warner", "team": "SF", "position": "MLB", "tackles": 132, "solo_tackles": 64, "assist_tackles": 68},
     ]
 
+    sacks = [
+        {"rank": 1, "player_id": "sack-1", "name": "Will Anderson Jr.", "team": "HOU", "position": "DE", "sacks": 7.5, "tackles_for_loss": 10.0, "forced_fumbles": 1, "solo_tackles": 15},
+        {"rank": 2, "player_id": "sack-2", "name": "Greg Rousseau", "team": "BUF", "position": "DE", "sacks": 6.0, "tackles_for_loss": 8.0, "forced_fumbles": 3, "solo_tackles": 12},
+        {"rank": 3, "player_id": "sack-3", "name": "Elijah Ponder", "team": "NE", "position": "LB", "sacks": 5.5, "tackles_for_loss": 7.0, "forced_fumbles": 1, "solo_tackles": 12},
+        {"rank": 4, "player_id": "sack-4", "name": "Dallas Turner", "team": "MIN", "position": "LB", "sacks": 5.5, "tackles_for_loss": 3.0, "forced_fumbles": 2, "solo_tackles": 10},
+        {"rank": 5, "player_id": "sack-5", "name": "Chase Young", "team": "NO", "position": "DE", "sacks": 5.5, "tackles_for_loss": 3.0, "forced_fumbles": 1, "solo_tackles": 4},
+        {"rank": 6, "player_id": "sack-6", "name": "T.J. Watt", "team": "PIT", "position": "LB", "sacks": 5.0, "tackles_for_loss": 7.0, "forced_fumbles": 2, "solo_tackles": 14},
+        {"rank": 7, "player_id": "sack-7", "name": "Myles Garrett", "team": "CLE", "position": "DE", "sacks": 5.0, "tackles_for_loss": 6.5, "forced_fumbles": 2, "solo_tackles": 11},
+        {"rank": 8, "player_id": "sack-8", "name": "Trey Hendrickson", "team": "CIN", "position": "DE", "sacks": 5.0, "tackles_for_loss": 6.0, "forced_fumbles": 1, "solo_tackles": 9},
+        {"rank": 9, "player_id": "sack-9", "name": "Aidan Hutchinson", "team": "DET", "position": "DE", "sacks": 4.5, "tackles_for_loss": 5.0, "forced_fumbles": 1, "solo_tackles": 10},
+        {"rank": 10, "player_id": "sack-10", "name": "Maxx Crosby", "team": "LV", "position": "DE", "sacks": 4.5, "tackles_for_loss": 6.0, "forced_fumbles": 0, "solo_tackles": 13},
+        {"rank": 14, "player_id": "sack-14", "name": "Nick Bosa", "team": "SF", "position": "DE", "sacks": 4.0, "tackles_for_loss": 5.5, "forced_fumbles": 1, "solo_tackles": 10},
+    ]
+
     if search and search.strip():
         q = search.lower().strip()
         rec_filtered = [p for p in receiving if q in p["name"].lower() or q in p["team"].lower()][:25]
         pas_filtered = [p for p in passing if q in p["name"].lower() or q in p["team"].lower()][:25]
+        rush_filtered = [p for p in rushing if q in p["name"].lower() or q in p["team"].lower()][:25]
         tkl_filtered = [p for p in tackles if q in p["name"].lower() or q in p["team"].lower()][:25]
+        sack_filtered = [p for p in sacks if q in p["name"].lower() or q in p["team"].lower()][:25]
         return {
             "season": season,
             "search_query": search,
-            "receiving": rec_filtered,
             "passing": pas_filtered,
+            "rushing": rush_filtered,
+            "receiving": rec_filtered,
             "tackles": tkl_filtered,
+            "sacks": sack_filtered,
         }
 
     return {
         "season": season,
         "search_query": None,
-        "receiving": receiving[:limit],
         "passing": passing[:limit],
+        "rushing": rushing[:limit],
+        "receiving": receiving[:limit],
         "tackles": tackles[:limit],
+        "sacks": sacks[:limit],
     }
 
 
-def get_player_leaders(season: int, limit: int = 10, search: Optional[str] = None) -> dict:
-    """Fetch aggregated NFL player statistical leaders for receiving, passing, and tackles.
+def _get_season_rushing_and_sacks(season: int, limit: int = 10, search: Optional[str] = None) -> tuple[list, list]:
+    """Fetch and aggregate true regular season rushing and sack leaders with search support."""
+    clean_search = search.lower().strip() if search and search.strip() else None
 
-    Queries the Supabase get_player_leaders RPC function, caching results in memory.
-    Supports searching across all players regardless of top 10 rank.
+    if season not in _SEASON_RUSHING_SACKS_CACHE:
+        try:
+            client = get_client()
+
+            # 1. Rushing leaders aggregation
+            r_res = client.table("player_game_stats") \
+                .select("player_id, player_display_name, player_name, team, position, carries, rushing_yards, rushing_tds") \
+                .eq("season", int(season)) \
+                .gt("rushing_yards", 0) \
+                .execute()
+
+            from collections import defaultdict
+            r_totals = defaultdict(lambda: {"rushing_yards": 0, "carries": 0, "touchdowns": 0, "team": "", "name": "", "position": "RB"})
+            for r in (r_res.data or []):
+                pid = r.get("player_id") or r.get("player_name")
+                entry = r_totals[pid]
+                entry["player_id"] = pid
+                entry["name"] = r.get("player_display_name") or r.get("player_name") or "Unknown"
+                entry["team"] = r.get("team") or ""
+                entry["position"] = r.get("position") or "RB"
+                entry["rushing_yards"] += int(r.get("rushing_yards") or 0)
+                entry["carries"] += int(r.get("carries") or 0)
+                entry["touchdowns"] += int(r.get("rushing_tds") or 0)
+
+            all_rushing = sorted(r_totals.values(), key=lambda x: (x["rushing_yards"], x["touchdowns"]), reverse=True)
+            for idx, p in enumerate(all_rushing, 1):
+                p["rank"] = idx
+                p["avg_ypc"] = round(p["rushing_yards"] / p["carries"], 1) if p["carries"] > 0 else 0.0
+
+            # 2. Sack leaders aggregation
+            s_res = client.table("player_game_stats") \
+                .select("player_id, player_display_name, player_name, team, position, def_sacks, def_tackles_for_loss, def_fumbles_forced, def_tackles_solo") \
+                .eq("season", int(season)) \
+                .gt("def_sacks", 0) \
+                .execute()
+
+            s_totals = defaultdict(lambda: {"sacks": 0.0, "tackles_for_loss": 0.0, "forced_fumbles": 0, "solo_tackles": 0, "team": "", "name": "", "position": "DE"})
+            for s in (s_res.data or []):
+                pid = s.get("player_id") or s.get("player_name")
+                entry = s_totals[pid]
+                entry["player_id"] = pid
+                entry["name"] = s.get("player_display_name") or s.get("player_name") or "Unknown"
+                entry["team"] = s.get("team") or ""
+                entry["position"] = s.get("position") or "DE"
+                entry["sacks"] += float(s.get("def_sacks") or 0.0)
+                entry["tackles_for_loss"] += float(s.get("def_tackles_for_loss") or 0.0)
+                entry["forced_fumbles"] += int(s.get("def_fumbles_forced") or 0)
+                entry["solo_tackles"] += int(s.get("def_tackles_solo") or 0)
+
+            all_sacks = sorted(s_totals.values(), key=lambda x: (x["sacks"], x["tackles_for_loss"]), reverse=True)
+            for idx, p in enumerate(all_sacks, 1):
+                p["rank"] = idx
+                p["sacks"] = round(p["sacks"], 1)
+                p["tackles_for_loss"] = round(p["tackles_for_loss"], 1)
+
+            _SEASON_RUSHING_SACKS_CACHE[season] = (all_rushing, all_sacks)
+        except Exception as e:
+            print(f"Error fetching rushing/sacks from Supabase: {e}")
+            fb = _generate_fallback_player_leaders(season, limit=50)
+            _SEASON_RUSHING_SACKS_CACHE[season] = (fb.get("rushing", []), fb.get("sacks", []))
+
+    all_rushing, all_sacks = _SEASON_RUSHING_SACKS_CACHE[season]
+
+    if clean_search:
+        r_filtered = [p for p in all_rushing if clean_search in p["name"].lower() or clean_search in p["team"].lower()][:25]
+        s_filtered = [p for p in all_sacks if clean_search in p["name"].lower() or clean_search in p["team"].lower()][:25]
+        return r_filtered, s_filtered
+
+    return all_rushing[:limit], all_sacks[:limit]
+
+
+def get_player_leaders(season: int, limit: int = 10, search: Optional[str] = None) -> dict:
+    """Fetch aggregated NFL player statistical leaders for passing, rushing, receiving, tackles, and sacks.
+
+    Queries the Supabase get_player_leaders RPC and player_game_stats table, caching results in memory.
+    Supports searching across all players regardless of rank.
     """
     clean_search = search.strip() if search and search.strip() else None
     cache_key = (int(season), int(limit), clean_search)
@@ -212,21 +323,30 @@ def get_player_leaders(season: int, limit: int = 10, search: Optional[str] = Non
             "search_query": clean_search,
         }
         response = client.rpc("get_player_leaders", params).execute()
+        rec = []
+        pas = []
+        tkl = []
         if response.data and isinstance(response.data, dict):
             rec = response.data.get("receiving") or []
             pas = response.data.get("passing") or []
             tkl = response.data.get("tackles") or []
-            result = {
-                "season": season,
-                "search_query": clean_search,
-                "receiving": rec,
-                "passing": pas,
-                "tackles": tkl,
-            }
-            _PLAYER_LEADERS_CACHE[cache_key] = result
-            return result
+
+        # Fetch rushing & sacks from player_game_stats
+        rush, sck = _get_season_rushing_and_sacks(int(season), limit=limit, search=clean_search)
+
+        result = {
+            "season": season,
+            "search_query": clean_search,
+            "passing": pas,
+            "rushing": rush,
+            "receiving": rec,
+            "tackles": tkl,
+            "sacks": sck,
+        }
+        _PLAYER_LEADERS_CACHE[cache_key] = result
+        return result
     except Exception as e:
-        print(f"Error executing get_player_leaders RPC: {e}")
+        print(f"Error executing player leaders retrieval: {e}")
 
     # Fallback to realistic values
     fallback = _generate_fallback_player_leaders(season, limit, search=clean_search)
