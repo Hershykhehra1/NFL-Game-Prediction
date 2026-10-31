@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { TeamBadge } from '../../utils/teamLogos';
 import { getStandings } from '../../services/api';
+import { PlayerLeaders } from './PlayerLeaders';
+
 
 const DIVISION_COLORS = {
   'AFC East':  '#00338D',
@@ -410,6 +412,25 @@ export const StandingsLeaderboard = () => {
               <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-3)', fontWeight: 600 }}>
                 {data.total_games_played} Games Finalized
               </span>
+              <a
+                href="#player-leaders"
+                style={{
+                  fontSize: 10,
+                  padding: '2px 9px',
+                  borderRadius: 6,
+                  background: 'rgba(45, 212, 191, 0.12)',
+                  color: 'var(--teal-bright)',
+                  border: '1px solid rgba(45, 212, 191, 0.25)',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <span>Player Leaders ↓</span>
+              </a>
             </div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-1)', marginTop: 2 }}>
               Team Standings &amp; Leaderboard
@@ -715,6 +736,14 @@ export const StandingsLeaderboard = () => {
           <StandingsTable teams={sortedLeagueTeams} showSeed={false} />
         </div>
       )}
+
+      {/* ── PLAYER STATISTICAL STANDINGS (Receiving, Passing, Tackles) ───── */}
+      <div id="player-leaders">
+        <PlayerLeaders 
+          season={data.season} 
+          initialLeaders={data.player_leaders} 
+        />
+      </div>
 
     </div>
   );
