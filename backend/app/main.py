@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_matchups import router as matchups_router, load_model_pipeline
-from app.api.routes_sandbox import router as sandbox_router
+from app.api.routes_standings import router as standings_router
 from app.api.routes_analytics import router as analytics_router
 
 
@@ -38,7 +38,7 @@ app.add_middleware(
 
 # ── Routers ─────────────────────────────────────────────────────────────────
 app.include_router(matchups_router, prefix="/api")
-app.include_router(sandbox_router, prefix="/api")
+app.include_router(standings_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 
 

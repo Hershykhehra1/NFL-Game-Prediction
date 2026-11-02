@@ -39,13 +39,19 @@ export const getTeams = () => apiFetch('/api/teams');
 /** Fetch per-player box score for a completed game */
 export const getBoxscore = (gameId) => apiFetch(`/api/boxscore/${encodeURIComponent(gameId)}`);
 
-/** Submit a custom sandbox prediction */
-export const predictCustom = (payload) =>
-  apiFetch('/api/predict-custom', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+/** Fetch NFL team standings and leaderboard */
+export const getStandings = (season) =>
+  apiFetch(`/api/standings${season ? `?season=${season}` : ''}`);
+
+/** Fetch NFL individual player statistical leaders with optional search query */
+export const getPlayerLeaders = (season, limit = 10, search = '') => {
+  const params = new URLSearchParams();
+  if (season) params.set('season', season);
+  if (limit) params.set('limit', limit);
+  if (search && search.trim()) params.set('search', search.trim());
+  return apiFetch(`/api/player-leaders?${params.toString()}`);
+};
 
 export { API_URL };
+
 
